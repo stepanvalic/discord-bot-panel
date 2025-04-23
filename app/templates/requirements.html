@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Requirements{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Bot Requirements</h1>
+    <p class="lead">Manage your bot's dependencies</p>
+
+    <div class="alert alert-info">
+        <h5>Virtual Environment Information</h5>
+        <p>This panel uses two separate virtual environments:</p>
+        <ul>
+            <li><strong>Panel Virtual Environment:</strong> Used by the panel itself. Located in the root directory.</li>
+            <li><strong>Bot Virtual Environment:</strong> Used by the hosted Discord bot. Located inside the bot's directory.</li>
+        </ul>
+        <p>When you install requirements, they will be installed in the bot's virtual environment. The bot will run using bash commands through this environment.</p>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Current Requirements</h5>
+                </div>
+                <div class="card-body">
+                    <div id="requirements-list">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button id="install-btn" class="btn btn-primary">Install Requirements</button>
+                    <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Installation Logs</h5>
+                </div>
+                <div class="card-body">
+                    <div id="install-logs" class="bg-dark text-light p-3 rounded" style="height: 300px; overflow-y: auto; font-family: monospace; background-color: #212529; color: #ffffff;">
+                        <div class="text-muted">No installation logs yet.</div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="use-venv" checked>
+                        <label class="form-check-label" for="use-venv">Use virtual environment</label>
+                        <small class="form-text text-muted d-block mt-1">When enabled, the bot will run in its own virtual environment. When disabled, it will use the system Python.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Edit requirements.txt</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <textarea id="requirements-editor" class="form-control" rows="10" style="font-family: monospace; background-color: #212529; color: #ffffff;"></textarea>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button id="save-requirements-btn" class="btn btn-success">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Function to load requirements
+    async function loadRequirements() {
+        try {
+            const response = await fetch('/api/requirements');
+            const data = await response.json();
+
+            if (data.requirements && data.requirements.length > 0) {
+                const requirementsList = document.getElementById('requirements-list');
+                requirementsList.innerHTML = '<ul class="list-group">';
+
+                data.requirements.forEach(req => {
+                    requirementsList.innerHTML += `<li class="list-group-item">${req}</li>`;
+                });
+
+                requirementsList.innerHTML += '</ul>';
+
+                // Update the editor
+                document.getElementById('requirements-editor').value = data.requirements.join('\n');
+            } else {
+                document.getElementById('requirements-list').innerHTML = '<div class="alert alert-info">No requirements found. Add some in the editor below.</div>';
+                document.getElementById('requirements-editor').value = '';
+            }
+        } catch (error) {
+            console.error('Error loading requirements:', error);
+            document.getElementById('requirements-list').innerHTML = '<div class="alert alert-danger">Error loading requirements</div>';
+        }
+    }
+
+    // Function to load installation logs
+    async function loadInstallLogs() {
+        try {
+            const response = await fetch('/api/requirements/logs');
+            const data = await response.json();
+
+            if (data.logs && data.logs.length > 0) {
+                const logsElement = document.getElementById('install-logs');
+                logsElement.innerHTML = '';
+
+                data.logs.forEach(log => {
+                    logsElement.innerHTML += `<div>${log}</div>`;
+                });
+
+                // Scroll to bottom
+                logsElement.scrollTop = logsElement.scrollHeight;
+            } else {
+                document.getElementById('install-logs').innerHTML = '<div class="text-muted">No installation logs yet.</div>';
+            }
+        } catch (error) {
+            console.error('Error loading logs:', error);
+            document.getElementById('install-logs').innerHTML = '<div class="text-danger">Error loading logs</div>';
+        }
+    }
+
+    // Function to install requirements
+    async function installRequirements() {
+        try {
+            const installBtn = document.getElementById('install-btn');
+            installBtn.disabled = true;
+            installBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Installing...';
+
+            const response = await fetch('/api/requirements/install', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                // Start polling for logs
+                const logsInterval = setInterval(async () => {
+                    await loadInstallLogs();
+                }, 1000);
+
+                // Stop polling after 30 seconds
+                setTimeout(() => {
+                    clearInterval(logsInterval);
+                    installBtn.disabled = false;
+                    installBtn.innerHTML = 'Install Requirements';
+                }, 30000);
+            } else {
+                const data = await response.json();
+                alert(`Error: ${data.detail || 'Failed to start installation'}`);
+                installBtn.disabled = false;
+                installBtn.innerHTML = 'Install Requirements';
+            }
+        } catch (error) {
+            console.error('Error installing requirements:', error);
+            alert('Error installing requirements');
+            document.getElementById('install-btn').disabled = false;
+            document.getElementById('install-btn').innerHTML = 'Install Requirements';
+        }
+    }
+
+    // Function to save requirements
+    async function saveRequirements() {
+        try {
+            const saveBtn = document.getElementById('save-requirements-btn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+
+            const content = document.getElementById('requirements-editor').value;
+
+            const response = await fetch('/api/files/requirements.txt', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: content
+                })
+            });
+
+            if (response.ok) {
+                alert('Requirements saved successfully');
+                await loadRequirements();
+            } else {
+                const data = await response.json();
+                alert(`Error: ${data.detail || 'Failed to save requirements'}`);
+            }
+
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = 'Save';
+        } catch (error) {
+            console.error('Error saving requirements:', error);
+            alert('Error saving requirements');
+            document.getElementById('save-requirements-btn').disabled = false;
+            document.getElementById('save-requirements-btn').innerHTML = 'Save';
+        }
+    }
+
+    // Function to update bot venv setting
+    async function updateVenvSetting() {
+        try {
+            const useVenv = document.getElementById('use-venv').checked;
+
+            const response = await fetch('/api/env/venv', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    use_venv: useVenv
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                alert(`Error: ${data.detail || 'Failed to update venv setting'}`);
+            }
+        } catch (error) {
+            console.error('Error updating venv setting:', error);
+            alert('Error updating venv setting');
+        }
+    }
+
+    // Load requirements on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadRequirements();
+        loadInstallLogs();
+
+        // Add event listeners
+        document.getElementById('install-btn').addEventListener('click', installRequirements);
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+            loadRequirements();
+            loadInstallLogs();
+        });
+        document.getElementById('save-requirements-btn').addEventListener('click', saveRequirements);
+        document.getElementById('use-venv').addEventListener('change', updateVenvSetting);
+
+        // Load venv setting
+        fetch('/api/env/venv')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('use-venv').checked = data.use_venv;
+            })
+            .catch(error => {
+                console.error('Error loading venv setting:', error);
+            });
+    });
+</script>
+{% endblock %}

@@ -1,28 +1,45 @@
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual Environment
-venv/
+*.so
+.Python
 env/
+venv/
 ENV/
 
-# Environment Variables
-.env
-
-# Database files
+# Database
+data.db
 *.db
-*.sqlite
 *.sqlite3
 
-
-# Bot Directory (cloned separately)
-/bot/*
-
 # Logs
+log/
 *.log
 
-# Temporary SSH Keys
-temp_ssh/
-temp_ssh_key
+# Ignore all files in logs directory but keep the directory and .gitkeep
+logs/*
+!logs/.gitkeep
+
+# Environment variables
+.env
+.env.*
+
+# Bot working directory
+work-bot/
+
+# SSH keys
+*.pem
+id_rsa
+id_rsa.pub
+*.key
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db

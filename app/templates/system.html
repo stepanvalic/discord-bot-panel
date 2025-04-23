@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}System Dependencies - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <h1 class="text-2xl font-bold">System Dependencies</h1>
+    
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-xl font-semibold mb-4">System Information</h2>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <p class="text-gray-400">Operating System:</p>
+                <p id="system-os" class="font-medium">Loading...</p>
+            </div>
+            <div>
+                <p class="text-gray-400">Python Version:</p>
+                <p id="python-version" class="font-medium">Loading...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-xl font-semibold mb-4">Dependencies Status</h2>
+        <div id="dependencies-status" class="mb-4">
+            <p>Checking system dependencies...</p>
+        </div>
+        
+        <div class="flex space-x-4">
+            <button id="check-dependencies" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded">
+                Check Dependencies
+            </button>
+            <button id="install-dependencies" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded hidden">
+                Install Missing Dependencies
+            </button>
+        </div>
+    </div>
+    
+    <div id="install-logs-container" class="bg-gray-800 p-6 rounded-lg shadow-md hidden">
+        <h2 class="text-xl font-semibold mb-4">Installation Logs</h2>
+        <div id="install-logs" class="bg-gray-900 p-4 rounded font-mono text-sm overflow-auto max-h-96">
+            <!-- Installation logs will be displayed here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check dependencies on page load
+        checkDependencies();
+        
+        // Add event listeners
+        document.getElementById('check-dependencies').addEventListener('click', checkDependencies);
+        document.getElementById('install-dependencies').addEventListener('click', installDependencies);
+    });
+    
+    async function checkDependencies() {
+        const statusElement = document.getElementById('dependencies-status');
+        const installButton = document.getElementById('install-dependencies');
+        
+        statusElement.innerHTML = '<p>Checking system dependencies...</p>';
+        installButton.classList.add('hidden');
+        
+        try {
+            const response = await fetch('/api/system/dependencies/check');
+            const data = await response.json();
+            
+            // Update system information
+            document.getElementById('system-os').textContent = data.system;
+            document.getElementById('python-version').textContent = data.python_version;
+            
+            // Update dependencies status
+            if (data.success) {
+                statusElement.innerHTML = `
+                    <div class="flex items-center text-green-400">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>${data.message}</span>
+                    </div>
+                `;
+                installButton.classList.add('hidden');
+            } else {
+                statusElement.innerHTML = `
+                    <div class="flex items-center text-red-400">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>${data.message}</span>
+                    </div>
+                `;
+                
+                // Only show install button on Linux
+                if (data.system === 'Linux') {
+                    installButton.classList.remove('hidden');
+                }
+            }
+        } catch (error) {
+            statusElement.innerHTML = `
+                <div class="flex items-center text-red-400">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Error checking dependencies: ${error.message}</span>
+                </div>
+            `;
+        }
+    }
+    
+    async function installDependencies() {
+        const statusElement = document.getElementById('dependencies-status');
+        const installButton = document.getElementById('install-dependencies');
+        const logsContainer = document.getElementById('install-logs-container');
+        const logsElement = document.getElementById('install-logs');
+        
+        statusElement.innerHTML = '<p>Installing system dependencies...</p>';
+        installButton.disabled = true;
+        logsContainer.classList.remove('hidden');
+        logsElement.textContent = 'Starting installation...\n';
+        
+        try {
+            const response = await fetch('/api/system/dependencies/install', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            // Update logs
+            logsElement.textContent = data.logs.join('\n');
+            
+            // Update status
+            if (data.success) {
+                statusElement.innerHTML = `
+                    <div class="flex items-center text-green-400">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>${data.message}</span>
+                    </div>
+                `;
+                installButton.classList.add('hidden');
+            } else {
+                statusElement.innerHTML = `
+                    <div class="flex items-center text-red-400">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>${data.message}</span>
+                    </div>
+                `;
+                installButton.disabled = false;
+            }
+        } catch (error) {
+            statusElement.innerHTML = `
+                <div class="flex items-center text-red-400">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Error installing dependencies: ${error.message}</span>
+                </div>
+            `;
+            installButton.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

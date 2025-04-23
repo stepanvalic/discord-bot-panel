@@ -2,317 +2,273 @@
 
 {% block title %}File Editor - Discord Bot Panel{% endblock %}
 
-{% block head %}
-<!-- CodeMirror for code editing -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/properties/properties.min.js"></script>
-<style>
-    .CodeMirror {
-        height: 400px;
-        border-radius: 0.25rem;
-        border: 1px solid #4b5563;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <!-- File List -->
-    <div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
-        <h2 class="text-lg font-semibold mb-2">Files</h2>
-        <p class="text-sm text-gray-400 mb-4">Only whitelisted configuration files can be edited.</p>
-
-        <div id="file-list" class="space-y-1">
-            <div class="text-gray-400 italic">Loading files...</div>
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">File Editor</h1>
+        {% if user.role == 'admin' %}
+        <button id="whitelist-btn" class="py-2 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-md font-medium">
+            Edit Whitelist
+        </button>
+        {% endif %}
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md md:col-span-1">
+            <h2 class="text-lg font-semibold mb-4">Files</h2>
+            <div id="files-loading">Loading files...</div>
+            <div id="files-list" class="hidden space-y-2">
+                <!-- Files will be populated here -->
+            </div>
+            <div id="no-files" class="hidden">
+                <p class="text-yellow-500">No files found in whitelist.</p>
+            </div>
+        </div>
+        
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md md:col-span-3">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold" id="editor-title">Select a file to edit</h2>
+                <button id="save-btn" class="py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium hidden">
+                    Save
+                </button>
+            </div>
+            <div id="editor-container" class="hidden">
+                <textarea id="file-editor" class="w-full h-96 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"></textarea>
+            </div>
+            <div id="editor-placeholder" class="text-gray-500">
+                Select a file from the list to edit its contents.
+            </div>
         </div>
     </div>
-
-    <!-- File Editor -->
-    <div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700 md:col-span-2">
-        <div id="editor-container">
-            <div id="no-file-selected" class="text-center py-16">
-                <i class="fas fa-file-code text-4xl text-gray-600 mb-2"></i>
-                <p class="text-gray-400">Select a file to edit</p>
-            </div>
-
-            <div id="file-editor" class="hidden">
-                <div class="flex justify-between items-center mb-2">
-                    <h2 id="file-name" class="text-lg font-semibold"></h2>
-                    <div>
-                        <button id="save-file" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">
-                            <i class="fas fa-save mr-1"></i> Save
-                        </button>
-                    </div>
+    
+    <!-- Whitelist Modal -->
+    <div id="whitelist-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md w-full max-w-md">
+            <h2 class="text-lg font-semibold mb-4">Edit Whitelist</h2>
+            <p class="text-sm text-gray-400 mb-4">Enter comma-separated list of files or directories to whitelist</p>
+            <form id="whitelist-form" class="space-y-4">
+                <div>
+                    <textarea id="whitelist-input" class="w-full h-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"></textarea>
                 </div>
-
-                <textarea id="code-editor"></textarea>
-            </div>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" id="whitelist-cancel" class="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-md font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" class="py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium">
+                        Save
+                    </button>
+                </div>
+            </form>
         </div>
-
-        <div id="status-message" class="mt-4 hidden"></div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
-    // Variables
-    let editor;
     let currentFile = null;
-
-    // Get file list
-    async function getFileList() {
+    
+    // Function to fetch files
+    async function fetchFiles() {
         try {
-            const response = await fetch('/api/files/all', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update file list
-                const fileListElement = document.getElementById('file-list');
-
-                if (data.files && data.files.length > 0) {
-                    fileListElement.innerHTML = '';
-
-                    // Group files by directory
-                    const filesByDir = {};
-                    data.files.forEach(file => {
-                        const path = file.path;
-                        const parts = path.split('/');
-
-                        // If file is in a subdirectory
-                        if (parts.length > 1) {
-                            const dir = parts.slice(0, -1).join('/');
-                            if (!filesByDir[dir]) {
-                                filesByDir[dir] = [];
-                            }
-                            filesByDir[dir].push(file);
-                        } else {
-                            // Root directory files
-                            if (!filesByDir['']) {
-                                filesByDir[''] = [];
-                            }
-                            filesByDir[''].push(file);
-                        }
-                    });
-
-                    // Sort directories
-                    const sortedDirs = Object.keys(filesByDir).sort();
-
-                    // Add root directory files first
-                    if (filesByDir['']) {
-                        filesByDir[''].forEach(file => {
-                            addFileToList(fileListElement, file);
-                        });
-                    }
-
-                    // Add subdirectory files
-                    sortedDirs.filter(dir => dir !== '').forEach(dir => {
-                        // Add directory header
-                        const dirHeader = document.createElement('div');
-                        dirHeader.className = 'text-sm font-medium text-gray-400 mt-2 mb-1 px-2';
-                        dirHeader.innerHTML = `<i class="fas fa-folder mr-2"></i> ${dir}/`;
-                        fileListElement.appendChild(dirHeader);
-
-                        // Add files in this directory
-                        filesByDir[dir].forEach(file => {
-                            addFileToList(fileListElement, file);
-                        });
-                    });
-                } else {
-                    fileListElement.innerHTML = '<div class="text-gray-400 italic">No files found</div>';
-                }
-            } else {
-                showStatusMessage('Error loading file list. Please try again.', 'error');
+            const response = await fetch('/api/files');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
-        } catch (error) {
-            console.error('Error getting file list:', error);
-            showStatusMessage('Error loading file list. Please try again.', 'error');
-        }
-    }
-
-    // Add a file to the list
-    function addFileToList(container, file) {
-        const fileItem = document.createElement('div');
-
-        // Get just the filename from the path
-        const fileName = file.path.split('/').pop();
-
-        // Set class based on whether the file is editable
-        if (file.editable) {
-            fileItem.className = 'cursor-pointer hover:bg-gray-700 px-2 py-1 rounded ml-2';
-            fileItem.innerHTML = `<i class="fas fa-file-alt mr-2 text-green-500"></i> ${fileName}`;
-            fileItem.addEventListener('click', () => loadFile(file.path));
-        } else {
-            fileItem.className = 'px-2 py-1 rounded ml-2 text-gray-500';
-            fileItem.innerHTML = `<i class="fas fa-file-alt mr-2"></i> ${fileName} <span class="text-xs italic">(view only)</span>`;
-            fileItem.addEventListener('click', () => loadFile(file.path, true));
-        }
-
-        container.appendChild(fileItem);
-    }
-
-    // Load file content
-    async function loadFile(filePath, readOnly = false) {
-        try {
-            const response = await fetch(`/api/files/${filePath}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Show editor
-                document.getElementById('no-file-selected').classList.add('hidden');
-                document.getElementById('file-editor').classList.remove('hidden');
-
-                // Update file name
-                document.getElementById('file-name').textContent = data.path;
-
-                // Set current file
-                currentFile = data.path;
-
-                // Set editor content
-                editor.setValue(data.content);
-
-                // Set editor mode based on file extension
-                const extension = data.path.split('.').pop().toLowerCase();
-                if (extension === 'py') {
-                    editor.setOption('mode', 'python');
-                } else if (extension === 'js' || extension === 'json') {
-                    editor.setOption('mode', 'javascript');
-                } else if (extension === 'yaml' || extension === 'yml') {
-                    editor.setOption('mode', 'yaml');
-                } else if (extension === 'env') {
-                    editor.setOption('mode', 'properties');
-                } else {
-                    editor.setOption('mode', 'text/plain');
-                }
-
-                // Set read-only mode if specified
-                editor.setOption('readOnly', readOnly);
-
-                // Show/hide save button based on read-only mode
-                if (readOnly) {
-                    document.getElementById('save-file').classList.add('hidden');
-                } else {
-                    document.getElementById('save-file').classList.remove('hidden');
-                }
-
-                // Highlight active file in the list
-                const fileItems = document.querySelectorAll('#file-list > div');
-                fileItems.forEach(item => {
-                    if (item.textContent.trim().includes(filePath.split('/').pop())) {
-                        item.classList.add('bg-blue-900');
-                    } else {
-                        item.classList.remove('bg-blue-900');
-                    }
+            
+            const data = await response.json();
+            
+            // Update UI
+            document.getElementById('files-loading').classList.add('hidden');
+            
+            if (data.files && data.files.length > 0) {
+                document.getElementById('files-list').classList.remove('hidden');
+                document.getElementById('no-files').classList.add('hidden');
+                
+                // Populate files list
+                const filesList = document.getElementById('files-list');
+                filesList.innerHTML = '';
+                
+                data.files.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'py-2 px-3 rounded cursor-pointer hover:bg-gray-700';
+                    fileItem.textContent = file;
+                    fileItem.addEventListener('click', () => loadFile(file));
+                    filesList.appendChild(fileItem);
                 });
             } else {
-                const error = await response.json();
-                showStatusMessage(`Error loading file: ${error.detail}`, 'error');
+                document.getElementById('files-list').classList.add('hidden');
+                document.getElementById('no-files').classList.remove('hidden');
             }
         } catch (error) {
-            console.error('Error loading file:', error);
-            showStatusMessage('Error loading file. Please try again.', 'error');
+            console.error('Error fetching files:', error);
+            document.getElementById('files-loading').textContent = 'Error loading files.';
         }
     }
-
-    // Save file content
-    async function saveFile() {
-        if (!currentFile) {
-            showStatusMessage('No file selected.', 'error');
-            return;
-        }
-
+    
+    // Function to load a file
+    async function loadFile(filePath) {
         try {
-            const content = editor.getValue();
-
+            currentFile = filePath;
+            
+            // Update UI
+            document.getElementById('editor-title').textContent = filePath;
+            document.getElementById('editor-placeholder').classList.add('hidden');
+            document.getElementById('editor-container').classList.remove('hidden');
+            document.getElementById('save-btn').classList.remove('hidden');
+            document.getElementById('file-editor').value = 'Loading file...';
+            
+            // Highlight selected file
+            const fileItems = document.querySelectorAll('#files-list div');
+            fileItems.forEach(item => {
+                if (item.textContent === filePath) {
+                    item.classList.add('bg-gray-700');
+                } else {
+                    item.classList.remove('bg-gray-700');
+                }
+            });
+            
+            const response = await fetch(`/api/files/${filePath}`);
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            if (response.status === 404) {
+                document.getElementById('file-editor').value = 'File not found.';
+                return;
+            }
+            
+            const data = await response.json();
+            document.getElementById('file-editor').value = data.content;
+        } catch (error) {
+            console.error('Error loading file:', error);
+            document.getElementById('file-editor').value = 'Error loading file.';
+        }
+    }
+    
+    // Function to save a file
+    async function saveFile() {
+        if (!currentFile) return;
+        
+        try {
+            const content = document.getElementById('file-editor').value;
+            
             const response = await fetch(`/api/files/${currentFile}`, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     content: content
                 })
             });
-
-            if (response.ok) {
-                showStatusMessage('File saved successfully.', 'success');
-            } else {
-                const error = await response.json();
-                showStatusMessage(`Error saving file: ${error.detail}`, 'error');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
+            
+            if (!response.ok) {
+                alert('Error saving file');
+                return;
+            }
+            
+            alert('File saved successfully');
         } catch (error) {
             console.error('Error saving file:', error);
-            showStatusMessage('Error saving file. Please try again.', 'error');
+            alert('Error saving file');
         }
     }
-
-    // Show status message
-    function showStatusMessage(message, type) {
-        const statusElement = document.getElementById('status-message');
-        statusElement.textContent = message;
-        statusElement.classList.remove('hidden', 'bg-green-900', 'bg-red-900', 'bg-blue-900');
-
-        if (type === 'success') {
-            statusElement.classList.add('bg-green-900', 'text-white', 'p-3', 'rounded');
-        } else if (type === 'error') {
-            statusElement.classList.add('bg-red-900', 'text-white', 'p-3', 'rounded');
-        } else {
-            statusElement.classList.add('bg-blue-900', 'text-white', 'p-3', 'rounded');
-        }
-
-        // Hide after 5 seconds
-        setTimeout(() => {
-            statusElement.classList.add('hidden');
-        }, 5000);
-    }
-
-    // Initialize CodeMirror
-    function initCodeMirror() {
-        editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
-            lineNumbers: true,
-            theme: 'default',
-            mode: 'text/plain',
-            indentUnit: 4,
-            smartIndent: true,
-            tabSize: 4,
-            indentWithTabs: false,
-            lineWrapping: false,
-            extraKeys: {
-                'Tab': function(cm) {
-                    cm.replaceSelection('    ', 'end');
-                }
+    
+    // Function to fetch whitelist
+    async function fetchWhitelist() {
+        try {
+            const response = await fetch('/api/files/whitelist');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
-        });
-
-        // Set dark theme
-        document.querySelector('.CodeMirror').style.backgroundColor = '#1f2937';
-        document.querySelector('.CodeMirror').style.color = '#e5e7eb';
-        document.querySelector('.CodeMirror-gutters').style.backgroundColor = '#111827';
-        document.querySelector('.CodeMirror-gutters').style.borderRight = '1px solid #374151';
+            
+            const data = await response.json();
+            document.getElementById('whitelist-input').value = data.whitelist;
+        } catch (error) {
+            console.error('Error fetching whitelist:', error);
+            document.getElementById('whitelist-input').value = 'Error loading whitelist.';
+        }
     }
-
-    // Event listeners
-    document.getElementById('save-file').addEventListener('click', saveFile);
-
+    
+    // Function to update whitelist
+    async function updateWhitelist(whitelist) {
+        try {
+            const response = await fetch('/api/files/whitelist', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    whitelist: whitelist
+                })
+            });
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            if (!response.ok) {
+                alert('Error updating whitelist');
+                return;
+            }
+            
+            // Refresh files list
+            fetchFiles();
+            
+            // Hide modal
+            document.getElementById('whitelist-modal').classList.add('hidden');
+            
+            alert('Whitelist updated successfully');
+        } catch (error) {
+            console.error('Error updating whitelist:', error);
+            alert('Error updating whitelist');
+        }
+    }
+    
     // Initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        initCodeMirror();
-        getFileList();
+    document.addEventListener('DOMContentLoaded', () => {
+        // Fetch files
+        fetchFiles();
+        
+        // Set up save button handler
+        document.getElementById('save-btn').addEventListener('click', saveFile);
+        
+        // Set up whitelist button handler
+        const whitelistBtn = document.getElementById('whitelist-btn');
+        if (whitelistBtn) {
+            whitelistBtn.addEventListener('click', () => {
+                fetchWhitelist();
+                document.getElementById('whitelist-modal').classList.remove('hidden');
+            });
+        }
+        
+        // Set up whitelist form handler
+        document.getElementById('whitelist-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const whitelist = document.getElementById('whitelist-input').value;
+            updateWhitelist(whitelist);
+        });
+        
+        // Set up whitelist cancel button handler
+        document.getElementById('whitelist-cancel').addEventListener('click', () => {
+            document.getElementById('whitelist-modal').classList.add('hidden');
+        });
     });
 </script>
 {% endblock %}

@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Discord Bot Panel{% endblock %}</title>
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -30,186 +28,111 @@
             }
         }
     </script>
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <!-- Custom CSS -->
-    <style>
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
-
-        /* Console colors */
-        .console {
-            font-family: 'Courier New', monospace;
-        }
-
-        .console .info {
-            color: #38bdf8;
-        }
-
-        .console .success {
-            color: #4ade80;
-        }
-
-        .console .warning {
-            color: #fbbf24;
-        }
-
-        .console .error {
-            color: #f87171;
-        }
-
-        .console .debug {
-            color: #a78bfa;
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
         }
     </style>
-
     {% block head %}{% endblock %}
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col">
-    <!-- Header -->
-    <header class="bg-gray-800 border-b border-gray-700">
-        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-            <div class="flex items-center space-x-4">
-                <button id="sidebar-toggle" class="text-gray-400 hover:text-white focus:outline-none">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <h1 class="text-xl font-bold">Discord Bot Panel</h1>
-            </div>
-            <div class="flex items-center space-x-4">
-                <span id="user-info" class="text-sm text-gray-400"></span>
-                <button id="logout-button" class="text-gray-400 hover:text-white focus:outline-none">
-                    <i class="fas fa-sign-out-alt"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <div class="flex flex-1">
+    {% if user %}
+    <div class="flex min-h-screen">
         <!-- Sidebar -->
-        <aside id="sidebar" class="bg-gray-800 w-64 border-r border-gray-700 transition-all duration-300 ease-in-out">
-            <nav class="py-4">
+        <div class="w-64 bg-gray-800 p-4 flex flex-col">
+            <div class="text-xl font-bold mb-8 text-center">Discord Bot Panel</div>
+            <nav class="flex-1">
                 <ul>
-                    <li>
-                        <a href="/" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-tachometer-alt w-6"></i> Dashboard
+                    <li class="mb-2">
+                        <a href="/" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/' %}bg-gray-700{% endif %}">
+                            Dashboard
                         </a>
                     </li>
-                    <li>
-                        <a href="/ssh-keys" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-key w-6"></i> SSH Keys
+                    <li class="mb-2">
+                        <a href="/git" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/git' %}bg-gray-700{% endif %}">
+                            Git
                         </a>
                     </li>
-                    <li>
-                        <a href="/webhook" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-webhook w-6"></i> Webhook
+                    <li class="mb-2">
+                        <a href="/webhook" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/webhook' %}bg-gray-700{% endif %}">
+                            Webhook
                         </a>
                     </li>
-                    <li>
-                        <a href="/files" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-file-code w-6"></i> File Editor
+                    <li class="mb-2">
+                        <a href="/files" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/files' %}bg-gray-700{% endif %}">
+                            File Editor
                         </a>
                     </li>
-                    <li>
-                        <a href="/users" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-users w-6"></i> Users
+                    <li class="mb-2">
+                        <a href="/env" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/env' %}bg-gray-700{% endif %}">
+                            Environment
                         </a>
                     </li>
-                    <li>
-                        <a href="/env" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-cog w-6"></i> Environment
+                    <li class="mb-2">
+                        <a href="/requirements" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/requirements' %}bg-gray-700{% endif %}">
+                            Requirements
                         </a>
                     </li>
-                    <li>
-                        <a href="/bot-settings" class="block px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-700">
-                            <i class="fas fa-robot w-6"></i> Bot Settings
+                    {% if user.role == 'admin' %}
+                    <li class="mb-2">
+                        <a href="/users" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/users' %}bg-gray-700{% endif %}">
+                            Users
                         </a>
                     </li>
+                    <li class="mb-2">
+                        <a href="/system" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/system' %}bg-gray-700{% endif %}">
+                            System
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="/discord" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/discord' %}bg-gray-700{% endif %}">
+                            Discord Settings
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="/ip-bans" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/ip-bans' %}bg-gray-700{% endif %}">
+                            IP Bans
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
             </nav>
-        </aside>
+            <div class="mt-auto pt-4 border-t border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        {% if user.avatar_url %}
+                        <img src="{{ user.avatar_url }}"
+                             alt="User Avatar"
+                             class="w-6 h-6 rounded-full mr-2">
+                        {% elif user.discord_avatar_url %}
+                        <img src="{{ user.discord_avatar_url }}"
+                             alt="Discord Avatar"
+                             class="w-6 h-6 rounded-full mr-2">
+                        {% elif user.discord_id %}
+                        <img src="https://cdn.discordapp.com/avatars/{{ user.discord_id }}/{{ user.discord_id }}.png"
+                             onerror="this.src='https://cdn.discordapp.com/embed/avatars/' + (parseInt('{{ user.discord_id }}') % 5) + '.png';"
+                             alt="Discord Avatar"
+                             class="w-6 h-6 rounded-full mr-2">
+                        {% endif %}
+                        <a href="/profile" class="hover:underline">{{ user.username }}</a>
+                    </div>
+                    <a href="/logout" class="text-red-400 hover:text-red-300">Logout</a>
+                </div>
+            </div>
+        </div>
 
         <!-- Main content -->
-        <main class="flex-1 p-4">
+        <div class="flex-1 p-8">
             {% block content %}{% endblock %}
-        </main>
-    </div>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 border-t border-gray-700 py-2">
-        <div class="container mx-auto px-4 text-center text-gray-400 text-sm">
-            Discord Bot Panel &copy; 2023
         </div>
-    </footer>
-
-    <!-- JavaScript -->
-    <script>
-        // Toggle sidebar
-        document.getElementById('sidebar-toggle').addEventListener('click', function() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('hidden');
-        });
-
-        // Check authentication
-        async function checkAuth() {
-            // Get token from localStorage
-            const token = localStorage.getItem('token');
-
-            // If no token, redirect to login page
-            if (!token) {
-                window.location.href = '/login';
-                return;
-            }
-
-            try {
-                const response = await fetch('/auth/me', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (response.ok) {
-                    const user = await response.json();
-                    document.getElementById('user-info').textContent = `${user.username} (${user.role})`;
-                } else {
-                    // Clear token and redirect to login page
-                    localStorage.removeItem('token');
-                    window.location.href = '/login';
-                }
-            } catch (error) {
-                console.error('Error checking authentication:', error);
-                // Do not redirect to prevent infinite loop
-            }
-        }
-
-        // Logout
-        document.getElementById('logout-button').addEventListener('click', function() {
-            localStorage.removeItem('token');
-            window.location.href = '/login';
-        });
-
-        // Check authentication on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            checkAuth();
-        });
-    </script>
+    </div>
+    {% else %}
+    <div class="flex min-h-screen items-center justify-center">
+        {% block auth_content %}{% endblock %}
+    </div>
+    {% endif %}
 
     {% block scripts %}{% endblock %}
 </body>

@@ -1,130 +1,149 @@
 import os
 import subprocess
 import paramiko
-from typing import Tuple, Optional
+import logging
+import stat
 
-def generate_ssh_key_pair() -> Tuple[str, str]:
-    """Generate a new SSH key pair."""
-    # Create a temporary directory for the keys
-    temp_dir = os.path.join(os.getcwd(), "temp_ssh")
-    os.makedirs(temp_dir, exist_ok=True)
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("logs/ssh.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("ssh")
 
-    # Generate key paths
-    private_key_path = os.path.join(temp_dir, "id_ed25519")
-    public_key_path = os.path.join(temp_dir, "id_ed25519.pub")
 
+def ensure_ssh_configured() -> str:
+    """
+    Ensure SSH is configured for Git operations
+    Returns the path to the private key file
+    """
     try:
-        # Generate the key pair using ssh-keygen
+        # Check if we have our SSH key
+        ssh_dir = os.path.expanduser("~/.ssh")
+        panel_ssh_dir = os.path.join(ssh_dir, "discord-bot-panel")
+        private_key_file = os.path.join(panel_ssh_dir, "id_rsa")
+
+        if os.path.exists(private_key_file):
+            # Set up SSH agent with our key
+            setup_ssh_agent(private_key_file)
+            logger.info("SSH configuration verified")
+            return private_key_file
+        else:
+            logger.warning("SSH key not found, generating new key pair")
+            # Generate a new key pair if none exists
+            generate_ssh_key_pair()
+            return private_key_file
+    except Exception as e:
+        logger.error(f"Error ensuring SSH configuration: {e}")
+        raise
+
+
+def setup_ssh_agent(private_key_file: str) -> None:
+    """
+    Set up SSH agent with our key
+    """
+    try:
+        # Start ssh-agent if not running
         subprocess.run(
-            [
-                "ssh-keygen",
-                "-t", "ed25519",
-                "-f", private_key_path,
-                "-N", "",  # No passphrase
-                "-C", f"discord-bot-panel-{os.getpid()}"
-            ],
+            ["ssh-agent", "-s"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
 
-        # Read the generated keys
-        with open(private_key_path, "r") as f:
+        # Add the key to ssh-agent
+        subprocess.run(
+            ["ssh-add", private_key_file],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        logger.info(f"Added key {private_key_file} to ssh-agent")
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to set up ssh-agent: {e}")
+    except Exception as e:
+        logger.warning(f"Error setting up ssh-agent: {e}")
+
+
+def generate_ssh_key_pair() -> tuple[str, str]:
+    """
+    Generate a new SSH key pair for use with Git without modifying global SSH config
+    """
+    try:
+        # Create SSH directory if it doesn't exist
+        ssh_dir = os.path.expanduser("~/.ssh")
+        panel_ssh_dir = os.path.join(ssh_dir, "discord-bot-panel")
+        os.makedirs(panel_ssh_dir, exist_ok=True)
+
+        # Generate a new key pair
+        key = paramiko.RSAKey.generate(2048)
+
+        # Define key file paths
+        private_key_file = os.path.join(panel_ssh_dir, "id_rsa")
+        public_key_file = os.path.join(panel_ssh_dir, "id_rsa.pub")
+
+        # Write the private key
+        key.write_private_key_file(private_key_file)
+
+        # Set correct permissions for private key (600)
+        os.chmod(private_key_file, stat.S_IRUSR | stat.S_IWUSR)
+
+        # Get the public key in OpenSSH format
+        public_key = f"ssh-rsa {key.get_base64()} discord-bot-panel"
+
+        # Write the public key to file
+        with open(public_key_file, "w") as f:
+            f.write(public_key)
+
+        # Set correct permissions for public key (644)
+        os.chmod(public_key_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+
+        # Read the private key
+        with open(private_key_file, "r") as f:
             private_key = f.read()
 
-        with open(public_key_path, "r") as f:
-            public_key = f.read()
+        # Add github.com to known_hosts if not already there
+        known_hosts_file = os.path.join(ssh_dir, "known_hosts")
+        try:
+            # Check if github.com is already in known_hosts
+            if os.path.exists(known_hosts_file):
+                with open(known_hosts_file, "r") as f:
+                    known_hosts_content = f.read()
+                if "github.com" not in known_hosts_content:
+                    # Add github.com to known_hosts
+                    subprocess.run(
+                        ["ssh-keyscan", "-t", "rsa", "github.com"],
+                        stdout=open(known_hosts_file, "a"),
+                        stderr=subprocess.PIPE,
+                        check=True
+                    )
+            else:
+                # Create known_hosts file with github.com
+                subprocess.run(
+                    ["ssh-keyscan", "-t", "rsa", "github.com"],
+                    stdout=open(known_hosts_file, "w"),
+                    stderr=subprocess.PIPE,
+                    check=True
+                )
 
-        return private_key, public_key
-    finally:
-        # Clean up temporary files
-        if os.path.exists(private_key_path):
-            os.remove(private_key_path)
-        if os.path.exists(public_key_path):
-            os.remove(public_key_path)
-        if os.path.exists(temp_dir):
-            os.rmdir(temp_dir)
+            # Set correct permissions for known_hosts file (644)
+            os.chmod(known_hosts_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
 
-def generate_ssh_key_pair_paramiko() -> Tuple[str, str]:
-    """Generate a new SSH key pair using paramiko."""
-    # Generate a new key
-    key = paramiko.Ed25519Key.generate()
+            logger.info("Added github.com to known_hosts")
+        except Exception as e:
+            logger.warning(f"Failed to add github.com to known_hosts: {e}")
 
-    # Get the private key in OpenSSH format
-    private_key = key.export_private_key().decode("utf-8")
+        # Set up SSH agent with our key
+        setup_ssh_agent(private_key_file)
 
-    # Get the public key in OpenSSH format
-    public_key = f"{key.get_name()} {key.get_base64()} discord-bot-panel-{os.getpid()}"
+        logger.info("SSH key pair generated and configured successfully")
 
-    return private_key, public_key
-
-def save_ssh_key_to_file(private_key: str, key_path: str) -> bool:
-    """Save the SSH private key to a file."""
-    try:
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(key_path), exist_ok=True)
-
-        # Write the private key to the file
-        with open(key_path, "w") as f:
-            f.write(private_key)
-
-        # Set correct permissions (read/write for owner only)
-        os.chmod(key_path, 0o600)
-
-        return True
-    except Exception:
-        return False
-
-def git_clone_with_ssh(repo_url: str, target_dir: str, private_key_path: str) -> Tuple[bool, Optional[str]]:
-    """Clone a Git repository using SSH."""
-    try:
-        # Get the absolute path for the target directory
-        abs_target_dir = os.path.abspath(target_dir)
-
-        # Ensure target directory exists
-        os.makedirs(os.path.dirname(abs_target_dir), exist_ok=True)
-
-        # Set up GIT_SSH_COMMAND to use the private key
-        env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = f"ssh -i {private_key_path} -o StrictHostKeyChecking=no"
-
-        # Clone the repository
-        result = subprocess.run(
-            ["git", "clone", repo_url, abs_target_dir],
-            env=env,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        return True, None
-    except subprocess.CalledProcessError as e:
-        return False, e.stderr.decode("utf-8")
+        return public_key, private_key
     except Exception as e:
-        return False, str(e)
-
-def git_pull_with_ssh(repo_dir: str, private_key_path: str) -> Tuple[bool, Optional[str]]:
-    """Pull updates from a Git repository using SSH."""
-    try:
-        # Get the absolute path for the repository directory
-        abs_repo_dir = os.path.abspath(repo_dir)
-
-        # Set up GIT_SSH_COMMAND to use the private key
-        env = os.environ.copy()
-        env["GIT_SSH_COMMAND"] = f"ssh -i {private_key_path} -o StrictHostKeyChecking=no"
-
-        # Pull the repository
-        result = subprocess.run(
-            ["git", "pull"],
-            cwd=abs_repo_dir,
-            env=env,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        return True, result.stdout.decode("utf-8")
-    except subprocess.CalledProcessError as e:
-        return False, e.stderr.decode("utf-8")
-    except Exception as e:
-        return False, str(e)
+        logger.error(f"Error generating SSH key pair: {e}")
+        raise

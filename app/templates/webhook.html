@@ -3,400 +3,213 @@
 {% block title %}Webhook - Discord Bot Panel{% endblock %}
 
 {% block content %}
-<div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700 mb-6">
-    <h2 class="text-lg font-semibold mb-4">Git Webhook Configuration</h2>
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Webhook Configuration</h1>
+        <div class="space-x-2">
+            <button id="send-status-btn" class="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-md font-medium">
+                Send Status Update
+            </button>
+            <button id="regenerate-btn" class="py-2 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-md font-medium">
+                Regenerate Key
+            </button>
+        </div>
+    </div>
 
-    <div id="webhook-section" class="mb-6">
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Webhook URL</h2>
         <form id="webhook-form" class="space-y-4">
             <div>
-                <label for="webhook-url" class="block text-sm font-medium text-gray-400 mb-1">Webhook URL</label>
-                <input type="text" id="webhook-url" name="webhook_url" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., https://example.com/webhook">
-                <p class="text-xs text-gray-500 mt-1">The URL that will receive webhook events.</p>
+                <label for="webhook-url" class="block text-sm font-medium mb-1">URL</label>
+                <input type="text" id="webhook-url" name="webhook-url" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+                <label for="webhook-message-id" class="block text-sm font-medium mb-1">Message ID (optional)</label>
+                <input type="text" id="webhook-message-id" name="webhook-message-id" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Leave empty to create a new message">
+                <p class="text-xs text-gray-400 mt-1">Enter a Discord message ID to update an existing message instead of creating a new one.</p>
             </div>
 
-            <div>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    Save Webhook
-                </button>
-            </div>
+            <button type="submit" class="py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium">
+                Save
+            </button>
         </form>
     </div>
 
-    <div id="webhook-key-section" class="mb-6 hidden">
-        <h3 class="text-md font-medium mb-2">Webhook Secret Key</h3>
-        <pre id="webhook-key" class="bg-gray-900 p-3 rounded text-sm text-gray-300 overflow-x-auto"></pre>
-
-        <button id="regenerate-key" class="mt-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-yellow-500">
-            Regenerate Key
-        </button>
-
-        <p class="text-xs text-gray-500 mt-2">This key is used to verify webhook requests. Keep it secret!</p>
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Webhook Key</h2>
+        <div id="key-loading">Loading webhook key...</div>
+        <div id="key-container" class="hidden">
+            <p class="text-sm text-gray-400 mb-2">Use this key to authenticate webhook requests</p>
+            <div class="bg-gray-900 p-4 rounded-md">
+                <pre id="webhook-key" class="whitespace-pre-wrap break-all text-sm"></pre>
+            </div>
+        </div>
     </div>
 
-    <div class="border-t border-gray-700 pt-4">
-        <h3 class="text-md font-medium mb-2">What is this for?</h3>
-        <p class="text-gray-400 text-sm">
-            Webhooks allow your bot to receive notifications when changes are pushed to your Git repository.
-            This can be used to automatically update your bot when you push new code.
-        </p>
-        <p class="text-gray-400 text-sm mt-2">
-            To set up a webhook in GitHub or GitLab:
-        </p>
-        <ol class="text-gray-400 text-sm list-decimal list-inside mt-1 space-y-1">
-            <li>Go to your repository settings</li>
-            <li>Find the Webhooks section</li>
-            <li>Add a new webhook with the URL shown above</li>
-            <li>Set the secret/token to the key shown above</li>
-            <li>Choose which events to trigger the webhook (usually just push events)</li>
-        </ol>
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Webhook Endpoint</h2>
+        <p class="text-sm text-gray-400 mb-2">Configure your Git provider to send webhooks to this URL:</p>
+        <div class="bg-gray-900 p-4 rounded-md">
+            <pre id="webhook-endpoint" class="whitespace-pre-wrap break-all text-sm">{{ request.base_url }}webhook/receive</pre>
+        </div>
     </div>
 
-    <div id="status-message" class="mt-4 hidden"></div>
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Special Commit Commands</h2>
+        <p class="text-sm text-gray-400 mb-2">You can use special commands in your commit messages to trigger actions:</p>
+        <div class="bg-gray-900 p-4 rounded-md">
+            <ul class="list-disc list-inside space-y-2 text-sm">
+                <li><strong>--restart</strong> - Automatically restarts the bot after pulling changes</li>
+                <li><strong>--piprestart</strong> - Installs requirements and then restarts the bot</li>
+            </ul>
+            <p class="mt-3 text-xs text-gray-400">Example: <code>git commit -m "Updated bot features --restart"</code></p>
+        </div>
+    </div>
 </div>
 
-<div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
-    <h2 class="text-lg font-semibold mb-4">Discord Webhook Configuration</h2>
-
-    <div id="discord-webhook-section" class="mb-6">
-        <form id="discord-webhook-form" class="space-y-4">
-            <div>
-                <label for="panel-webhook-url" class="block text-sm font-medium text-gray-400 mb-1">Combined Status Webhook URL</label>
-                <input type="text" id="panel-webhook-url" name="panel_webhook_url" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., https://discord.com/api/webhooks/...">
-                <p class="text-xs text-gray-500 mt-1">The Discord webhook URL that will receive combined panel and bot status updates.</p>
-            </div>
-
-            <div>
-                <label for="bot-webhook-url" class="block text-sm font-medium text-gray-400 mb-1">Bot Status Webhook URL (Legacy)</label>
-                <input type="text" id="bot-webhook-url" name="bot_webhook_url" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., https://discord.com/api/webhooks/...">
-                <p class="text-xs text-gray-500 mt-1">The Discord webhook URL that will receive bot-only status updates. This is for backward compatibility and can be left empty if you're using the combined status webhook above.</p>
-            </div>
-
-            <div>
-                <label for="panel-message-id" class="block text-sm font-medium text-gray-400 mb-1">Panel Message ID (Optional)</label>
-                <input type="text" id="panel-message-id" name="panel_message_id" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 1234567890123456789">
-                <p class="text-xs text-gray-500 mt-1">The ID of an existing Discord message to update for the combined status webhook. Leave empty to create a new message.</p>
-            </div>
-
-            <div>
-                <label for="bot-message-id" class="block text-sm font-medium text-gray-400 mb-1">Bot Message ID (Optional)</label>
-                <input type="text" id="bot-message-id" name="bot_message_id" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 1234567890123456789">
-                <p class="text-xs text-gray-500 mt-1">The ID of an existing Discord message to update for the bot-only webhook. Leave empty to create a new message.</p>
-            </div>
-
-            <div>
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    Save Discord Webhooks
-                </button>
-                <button type="button" id="test-discord-webhook" class="ml-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500">
-                    Test Webhooks
-                </button>
-            </div>
-        </form>
-    </div>
-
-    <div class="border-t border-gray-700 pt-4">
-        <h3 class="text-md font-medium mb-2">What is this for?</h3>
-        <p class="text-gray-400 text-sm">
-            Discord webhooks allow you to send status updates to your Discord server.
-            The combined status webhook will be updated every minute with the current status of both the panel and the bot in a single message.
-            This provides a comprehensive overview of your entire system in one place.
-        </p>
-        <p class="text-gray-400 text-sm mt-2">
-            To set up a webhook in Discord:
-        </p>
-        <ol class="text-gray-400 text-sm list-decimal list-inside mt-1 space-y-1">
-            <li>Go to your Discord server settings</li>
-            <li>Select "Integrations" and then "Webhooks"</li>
-            <li>Click "New Webhook"</li>
-            <li>Give it a name (e.g., "Bot Panel Status")</li>
-            <li>Select the channel where you want the messages to appear</li>
-            <li>Click "Copy Webhook URL" and paste it in the form above</li>
-        </ol>
-    </div>
-
-    <div id="discord-status-message" class="mt-4 hidden"></div>
-</div>
-{% endblock %}
-
-{% block scripts %}
 <script>
-    // Get webhook configuration
-    async function getWebhook() {
+    // Function to fetch webhook info
+    async function fetchWebhookInfo() {
         try {
-            const response = await fetch('/api/webhook/', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
+            const response = await fetch('/api/webhook');
 
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update form with current values
-                document.getElementById('webhook-url').value = data.url || '';
-
-                // Show webhook key if it exists
-                if (data.key) {
-                    document.getElementById('webhook-key').textContent = data.key;
-                    document.getElementById('webhook-key-section').classList.remove('hidden');
-                }
-            } else if (response.status !== 404) {
-                // Only show error if it's not a 404 (which just means no webhook is configured yet)
-                showStatusMessage('Error loading webhook configuration. Please try again.', 'error');
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
+
+            const data = await response.json();
+
+            // Update UI
+            document.getElementById('key-loading').classList.add('hidden');
+            document.getElementById('key-container').classList.remove('hidden');
+            document.getElementById('webhook-key').textContent = data.key;
+            document.getElementById('webhook-url').value = data.url || '';
+            document.getElementById('webhook-message-id').value = data.message_id || '';
         } catch (error) {
-            console.error('Error getting webhook:', error);
-            showStatusMessage('Error loading webhook configuration. Please try again.', 'error');
+            console.error('Error fetching webhook info:', error);
+            document.getElementById('key-loading').textContent = 'Error loading webhook info.';
         }
     }
 
-    // Save webhook
-    async function saveWebhook(url) {
+    // Function to update webhook URL
+    async function updateWebhookUrl(url) {
         try {
-            const response = await fetch('/api/webhook/', {
+            const response = await fetch('/api/webhook', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    url: url
+                    url: url,
+                    message_id: document.getElementById('webhook-message-id').value
                 })
             });
 
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update form with current values
-                document.getElementById('webhook-url').value = data.url;
-
-                // Show webhook key
-                document.getElementById('webhook-key').textContent = data.key;
-                document.getElementById('webhook-key-section').classList.remove('hidden');
-
-                showStatusMessage('Webhook saved successfully.', 'success');
-                return true;
-            } else {
-                const error = await response.json();
-                showStatusMessage(`Error saving webhook: ${error.detail}`, 'error');
-                return false;
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
+
+            const data = await response.json();
+
+            // Update UI
+            document.getElementById('webhook-url').value = data.url || '';
+            document.getElementById('webhook-message-id').value = data.message_id || '';
+
+            // Show success message
+            alert('Webhook URL updated successfully');
         } catch (error) {
-            console.error('Error saving webhook:', error);
-            showStatusMessage('Error saving webhook. Please try again.', 'error');
-            return false;
+            console.error('Error updating webhook URL:', error);
+            alert('Error updating webhook URL');
         }
     }
 
-    // Regenerate webhook key
+    // Function to regenerate webhook key
     async function regenerateWebhookKey() {
         try {
+            document.getElementById('regenerate-btn').disabled = true;
+            document.getElementById('regenerate-btn').textContent = 'Regenerating...';
+
             const response = await fetch('/api/webhook/regenerate', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
+                method: 'POST'
             });
 
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update webhook key
-                document.getElementById('webhook-key').textContent = data.key;
-
-                showStatusMessage('Webhook key regenerated successfully.', 'success');
-                return true;
-            } else {
-                const error = await response.json();
-                showStatusMessage(`Error regenerating webhook key: ${error.detail}`, 'error');
-                return false;
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
             }
+
+            const data = await response.json();
+
+            // Update UI
+            document.getElementById('webhook-key').textContent = data.key;
+
+            // Re-enable button
+            document.getElementById('regenerate-btn').disabled = false;
+            document.getElementById('regenerate-btn').textContent = 'Regenerate Key';
+
+            // Show success message
+            alert('Webhook key regenerated successfully');
         } catch (error) {
             console.error('Error regenerating webhook key:', error);
-            showStatusMessage('Error regenerating webhook key. Please try again.', 'error');
-            return false;
+            document.getElementById('regenerate-btn').disabled = false;
+            document.getElementById('regenerate-btn').textContent = 'Regenerate Key';
+            alert('Error regenerating webhook key');
         }
     }
 
-    // Show status message
-    function showStatusMessage(message, type) {
-        const statusElement = document.getElementById('status-message');
-        statusElement.textContent = message;
-        statusElement.classList.remove('hidden', 'bg-green-900', 'bg-red-900', 'bg-blue-900');
+    // Function to send status update
+    async function sendStatusUpdate() {
+        try {
+            document.getElementById('send-status-btn').disabled = true;
+            document.getElementById('send-status-btn').textContent = 'Sending...';
 
-        if (type === 'success') {
-            statusElement.classList.add('bg-green-900', 'text-white', 'p-3', 'rounded');
-        } else if (type === 'error') {
-            statusElement.classList.add('bg-red-900', 'text-white', 'p-3', 'rounded');
-        } else {
-            statusElement.classList.add('bg-blue-900', 'text-white', 'p-3', 'rounded');
+            const response = await fetch('/api/status/webhook', {
+                method: 'POST'
+            });
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            if (!response.ok) {
+                const data = await response.json();
+                alert(data.detail || 'Error sending status update');
+                return;
+            }
+
+            // Show success message
+            alert('Status update sent successfully');
+        } catch (error) {
+            console.error('Error sending status update:', error);
+            alert('Error sending status update');
+        } finally {
+            document.getElementById('send-status-btn').disabled = false;
+            document.getElementById('send-status-btn').textContent = 'Send Status Update';
         }
-
-        // Hide after 5 seconds
-        setTimeout(() => {
-            statusElement.classList.add('hidden');
-        }, 5000);
     }
-
-    // Event listeners
-    document.getElementById('webhook-form').addEventListener('submit', function(event) {
-        event.preventDefault();
-
-        const url = document.getElementById('webhook-url').value.trim();
-
-        if (!url) {
-            showStatusMessage('Webhook URL cannot be empty.', 'error');
-            return;
-        }
-
-        saveWebhook(url);
-    });
-
-    document.getElementById('regenerate-key').addEventListener('click', regenerateWebhookKey);
 
     // Initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        getWebhook();
-        getDiscordWebhook();
+    document.addEventListener('DOMContentLoaded', () => {
+        // Fetch webhook info
+        fetchWebhookInfo();
+
+        // Set up form handler
+        document.getElementById('webhook-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const url = document.getElementById('webhook-url').value;
+            updateWebhookUrl(url);
+        });
+
+        // Set up button handlers
+        document.getElementById('regenerate-btn').addEventListener('click', regenerateWebhookKey);
+        document.getElementById('send-status-btn').addEventListener('click', sendStatusUpdate);
     });
-
-    // Get Discord webhook configuration
-    async function getDiscordWebhook() {
-        try {
-            const response = await fetch('/api/webhook/discord', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update form with current values
-                document.getElementById('panel-webhook-url').value = data.panel_webhook_url || '';
-                document.getElementById('panel-message-id').value = data.message_id || '';
-                document.getElementById('bot-webhook-url').value = data.bot_webhook_url || '';
-                document.getElementById('bot-message-id').value = data.bot_message_id || '';
-            } else if (response.status !== 404) {
-                // Only show error if it's not a 404 (which just means no webhook is configured yet)
-                showDiscordStatusMessage('Error loading Discord webhook configuration. Please try again.', 'error');
-            }
-        } catch (error) {
-            console.error('Error getting Discord webhook:', error);
-            showDiscordStatusMessage('Error loading Discord webhook configuration. Please try again.', 'error');
-        }
-    }
-
-    // Save Discord webhook
-    async function saveDiscordWebhook(panelWebhookUrl, panelMessageId, botWebhookUrl, botMessageId) {
-        try {
-            const response = await fetch('/api/webhook/discord', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    panel_webhook_url: panelWebhookUrl,
-                    panel_message_id: panelMessageId,
-                    bot_webhook_url: botWebhookUrl,
-                    bot_message_id: botMessageId
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Update form with current values
-                document.getElementById('panel-webhook-url').value = data.panel_webhook_url || '';
-                document.getElementById('panel-message-id').value = data.message_id || '';
-                document.getElementById('bot-webhook-url').value = data.bot_webhook_url || '';
-                document.getElementById('bot-message-id').value = data.bot_message_id || '';
-
-                showDiscordStatusMessage('Discord webhooks saved successfully.', 'success');
-                return true;
-            } else {
-                const error = await response.json();
-                showDiscordStatusMessage(`Error saving Discord webhooks: ${error.detail}`, 'error');
-                return false;
-            }
-        } catch (error) {
-            console.error('Error saving Discord webhook:', error);
-            showDiscordStatusMessage('Error saving Discord webhooks. Please try again.', 'error');
-            return false;
-        }
-    }
-
-    // Test Discord webhook
-    async function testDiscordWebhook() {
-        try {
-            const response = await fetch('/api/webhook/discord/test', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-
-                // Show results
-                let message = 'Test results:\n';
-                message += `Panel webhook: ${data.panel_webhook}\n`;
-                message += `Bot webhook: ${data.bot_webhook}`;
-
-                showDiscordStatusMessage(message, 'success');
-                return true;
-            } else {
-                const error = await response.json();
-                showDiscordStatusMessage(`Error testing Discord webhooks: ${error.detail}`, 'error');
-                return false;
-            }
-        } catch (error) {
-            console.error('Error testing Discord webhook:', error);
-            showDiscordStatusMessage('Error testing Discord webhooks. Please try again.', 'error');
-            return false;
-        }
-    }
-
-    // Show Discord status message
-    function showDiscordStatusMessage(message, type) {
-        const statusElement = document.getElementById('discord-status-message');
-        statusElement.textContent = message;
-        statusElement.classList.remove('hidden', 'bg-green-900', 'bg-red-900', 'bg-blue-900');
-
-        if (type === 'success') {
-            statusElement.classList.add('bg-green-900', 'text-white', 'p-3', 'rounded');
-        } else if (type === 'error') {
-            statusElement.classList.add('bg-red-900', 'text-white', 'p-3', 'rounded');
-        } else {
-            statusElement.classList.add('bg-blue-900', 'text-white', 'p-3', 'rounded');
-        }
-
-        // Hide after 5 seconds
-        setTimeout(() => {
-            statusElement.classList.add('hidden');
-        }, 5000);
-    }
-
-    // Discord webhook form submission
-    document.getElementById('discord-webhook-form').addEventListener('submit', function(event) {
-        event.preventDefault();
-
-        const panelWebhookUrl = document.getElementById('panel-webhook-url').value.trim();
-        const panelMessageId = document.getElementById('panel-message-id').value.trim();
-        const botWebhookUrl = document.getElementById('bot-webhook-url').value.trim();
-        const botMessageId = document.getElementById('bot-message-id').value.trim();
-
-        if (!panelWebhookUrl && !botWebhookUrl) {
-            showDiscordStatusMessage('At least one webhook URL must be provided.', 'error');
-            return;
-        }
-
-        saveDiscordWebhook(panelWebhookUrl, panelMessageId, botWebhookUrl, botMessageId);
-    });
-
-    // Test Discord webhook button
-    document.getElementById('test-discord-webhook').addEventListener('click', testDiscordWebhook);
 </script>
 {% endblock %}

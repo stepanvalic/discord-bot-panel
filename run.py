@@ -1,42 +1,62 @@
+#!/usr/bin/env python3
 import os
 import sys
+import logging
 import uvicorn
-import secrets
-from dotenv import load_dotenv
+import argparse
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("logs/app.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("discord-bot-panel")
 
-# Check if .env file exists, create if not
-if not os.path.exists('.env'):
-    print("Creating .env file...")
-
-    # Generate a secret key
-    secret_key = secrets.token_hex(32)
-
-    # Create .env file with default values
-    with open('.env', 'w') as f:
-        f.write(f"# FastAPI settings\n")
-        f.write(f"SECRET_KEY={secret_key}\n")
-        f.write(f"ALGORITHM=HS256\n")
-        f.write(f"ACCESS_TOKEN_EXPIRE_MINUTES=30\n\n")
-
-        f.write(f"# Bot settings\n")
-        f.write(f"BOT_DIR=./workspace\n")
-        f.write(f"BOT_SCRIPT=bot.py\n")
-        f.write(f"BOT_VENV=venv\n\n")
-
-        f.write(f"# Webhook settings\n")
-        f.write(f"WEBHOOK_SECRET={secrets.token_urlsafe(16)}\n\n")
-
-        f.write(f"# File editor settings\n")
-        f.write(f"WHITELISTED_FILES=.env,config.yaml,config.json\n")
-
-    print("Created .env file with default values.")
+def setup_environment():
+    """
+    Set up the environment for the application
+    """
+    # Create necessary directories
+    os.makedirs("logs", exist_ok=True)
+    os.makedirs("work-bot", exist_ok=True)
+    
+    # Check if the database exists, if not initialize it
+    if not os.path.exists("data.db"):
+        logger.info("Database not found, initializing...")
+        try:
+            from app.db.init_db import init_db
+            init_db()
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            sys.exit(1)
 
 def main():
-    # Run the FastAPI application
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    """
+    Main entry point for the application
+    """
+    parser = argparse.ArgumentParser(description="Discord Bot Panel")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    args = parser.parse_args()
+    
+    # Set up the environment
+    setup_environment()
+    
+    # Start the application
+    logger.info(f"Starting Discord Bot Panel on {args.host}:{args.port}")
+    uvicorn.run(
+        "app.main:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload
+    )
 
 if __name__ == "__main__":
     main()

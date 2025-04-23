@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Git - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Git Repository Management</h1>
+        <div class="space-x-2">
+            <button id="generate-btn" class="py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium">
+                Generate SSH Key
+            </button>
+            <button id="pull-btn" class="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-md font-medium">
+                Pull Repository
+            </button>
+            <button id="install-req-btn" class="py-2 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-md font-medium">
+                Install Requirements
+            </button>
+        </div>
+    </div>
+    
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">SSH Public Key</h2>
+        <div id="key-loading">Loading SSH key...</div>
+        <div id="key-container" class="hidden">
+            <p class="text-sm text-gray-400 mb-2">Add this public key to your Git provider (GitHub, GitLab, etc.)</p>
+            <div class="bg-gray-900 p-4 rounded-md">
+                <pre id="public-key" class="whitespace-pre-wrap break-all text-sm"></pre>
+            </div>
+        </div>
+        <div id="no-key" class="hidden">
+            <p class="text-yellow-500">No SSH key found. Generate a new key pair using the button above.</p>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Clone Repository</h2>
+        <form id="clone-form" class="space-y-4">
+            <div>
+                <label for="repo-url" class="block text-sm font-medium mb-1">Repository URL (SSH)</label>
+                <input type="text" id="repo-url" name="repo-url" placeholder="git@github.com:username/repository.git" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <p class="text-xs text-gray-400 mt-1">Use SSH URL format (git@github.com:username/repository.git)</p>
+            </div>
+            <div>
+                <label for="branch" class="block text-sm font-medium mb-1">Branch (optional)</label>
+                <input type="text" id="branch" name="branch" placeholder="main" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <p class="text-xs text-gray-400 mt-1">Leave empty to use the default branch</p>
+            </div>
+            <button type="submit" class="py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium">
+                Clone Repository
+            </button>
+        </form>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Repository Status</h2>
+        <div id="status-loading">Loading repository status...</div>
+        <div id="status-container" class="hidden">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <h3 class="text-md font-medium mb-2">Current Repository</h3>
+                    <div class="bg-gray-900 p-4 rounded-md">
+                        <p id="current-repo" class="text-sm"></p>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-md font-medium mb-2">Current Branch</h3>
+                    <div class="bg-gray-900 p-4 rounded-md">
+                        <p id="current-branch" class="text-sm"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-md font-medium mb-2">Last Commit</h3>
+                <div class="bg-gray-900 p-4 rounded-md">
+                    <p id="last-commit" class="text-sm"></p>
+                </div>
+            </div>
+        </div>
+        <div id="no-repo" class="hidden">
+            <p class="text-yellow-500">No repository found. Clone a repository using the form above.</p>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Operation Log</h2>
+        <div id="log-container" class="bg-gray-900 p-4 rounded-md h-64 overflow-y-auto">
+            <pre id="operation-log" class="text-sm text-gray-300"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Function to fetch SSH key
+    async function fetchSSHKey() {
+        try {
+            const response = await fetch('/api/ssh-keys');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            if (response.status === 404) {
+                // No key found
+                document.getElementById('key-loading').classList.add('hidden');
+                document.getElementById('no-key').classList.remove('hidden');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Update UI
+            document.getElementById('key-loading').classList.add('hidden');
+            document.getElementById('key-container').classList.remove('hidden');
+            document.getElementById('public-key').textContent = data.public_key;
+        } catch (error) {
+            console.error('Error fetching SSH key:', error);
+            document.getElementById('key-loading').textContent = 'Error loading SSH key.';
+        }
+    }
+    
+    // Function to generate new SSH key
+    async function generateSSHKey() {
+        try {
+            document.getElementById('generate-btn').disabled = true;
+            document.getElementById('generate-btn').textContent = 'Generating...';
+            
+            const response = await fetch('/api/ssh-keys/generate', {
+                method: 'POST'
+            });
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Update UI
+            document.getElementById('key-loading').classList.add('hidden');
+            document.getElementById('key-container').classList.remove('hidden');
+            document.getElementById('no-key').classList.add('hidden');
+            document.getElementById('public-key').textContent = data.public_key;
+            
+            // Re-enable button
+            document.getElementById('generate-btn').disabled = false;
+            document.getElementById('generate-btn').textContent = 'Generate SSH Key';
+            
+            // Add to log
+            addToLog('SSH key generated successfully.');
+            
+            // Refresh repository status
+            fetchRepoStatus();
+        } catch (error) {
+            console.error('Error generating SSH key:', error);
+            document.getElementById('generate-btn').disabled = false;
+            document.getElementById('generate-btn').textContent = 'Generate SSH Key';
+            addToLog('Error generating SSH key: ' + error.message);
+        }
+    }
+    
+    // Function to clone repository
+    async function cloneRepository(repoUrl, branch) {
+        try {
+            addToLog(`Cloning repository ${repoUrl}${branch ? ` (branch: ${branch})` : ''}...`);
+            
+            const response = await fetch('/api/git/clone', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: repoUrl,
+                    branch: branch || ''
+                })
+            });
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                addToLog('Repository cloned successfully.');
+                fetchRepoStatus();
+            } else {
+                addToLog(`Error cloning repository: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error cloning repository:', error);
+            addToLog('Error cloning repository: ' + error.message);
+        }
+    }
+    
+    // Function to pull repository
+    async function pullRepository() {
+        try {
+            document.getElementById('pull-btn').disabled = true;
+            document.getElementById('pull-btn').textContent = 'Pulling...';
+            
+            addToLog('Pulling latest changes...');
+            
+            const response = await fetch('/api/git/pull', {
+                method: 'POST'
+            });
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                addToLog('Repository pulled successfully.');
+                addToLog(data.message || '');
+                fetchRepoStatus();
+            } else {
+                addToLog(`Error pulling repository: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error pulling repository:', error);
+            addToLog('Error pulling repository: ' + error.message);
+        } finally {
+            document.getElementById('pull-btn').disabled = false;
+            document.getElementById('pull-btn').textContent = 'Pull Repository';
+        }
+    }
+    
+    // Function to install requirements
+    async function installRequirements() {
+        try {
+            document.getElementById('install-req-btn').disabled = true;
+            document.getElementById('install-req-btn').textContent = 'Installing...';
+            
+            addToLog('Installing requirements...');
+            
+            const response = await fetch('/api/requirements/install', {
+                method: 'POST'
+            });
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                addToLog('Started installing requirements.');
+                
+                // Poll for logs
+                const logInterval = setInterval(async () => {
+                    const logsResponse = await fetch('/api/requirements/logs');
+                    const logsData = await logsResponse.json();
+                    
+                    if (logsData.logs && logsData.logs.length > 0) {
+                        const lastLog = logsData.logs[logsData.logs.length - 1];
+                        if (lastLog.includes('successfully')) {
+                            addToLog('Requirements installed successfully.');
+                            clearInterval(logInterval);
+                        }
+                    }
+                }, 2000);
+                
+                // Stop polling after 30 seconds
+                setTimeout(() => {
+                    clearInterval(logInterval);
+                }, 30000);
+            } else {
+                addToLog(`Error installing requirements: ${data.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error installing requirements:', error);
+            addToLog('Error installing requirements: ' + error.message);
+        } finally {
+            document.getElementById('install-req-btn').disabled = false;
+            document.getElementById('install-req-btn').textContent = 'Install Requirements';
+        }
+    }
+    
+    // Function to fetch repository status
+    async function fetchRepoStatus() {
+        try {
+            document.getElementById('status-loading').textContent = 'Loading repository status...';
+            
+            const response = await fetch('/api/git/status');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            if (response.status === 404) {
+                // No repository found
+                document.getElementById('status-loading').classList.add('hidden');
+                document.getElementById('no-repo').classList.remove('hidden');
+                document.getElementById('status-container').classList.add('hidden');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Update UI
+            document.getElementById('status-loading').classList.add('hidden');
+            document.getElementById('status-container').classList.remove('hidden');
+            document.getElementById('no-repo').classList.add('hidden');
+            
+            document.getElementById('current-repo').textContent = data.repository || 'N/A';
+            document.getElementById('current-branch').textContent = data.branch || 'N/A';
+            document.getElementById('last-commit').textContent = data.last_commit || 'N/A';
+        } catch (error) {
+            console.error('Error fetching repository status:', error);
+            document.getElementById('status-loading').textContent = 'Error loading repository status.';
+        }
+    }
+    
+    // Function to add message to log
+    function addToLog(message) {
+        const logElement = document.getElementById('operation-log');
+        const timestamp = new Date().toLocaleTimeString();
+        logElement.textContent += `[${timestamp}] ${message}\n`;
+        
+        // Scroll to bottom
+        const logContainer = document.getElementById('log-container');
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Fetch SSH key
+        fetchSSHKey();
+        
+        // Fetch repository status
+        fetchRepoStatus();
+        
+        // Set up button handlers
+        document.getElementById('generate-btn').addEventListener('click', generateSSHKey);
+        document.getElementById('pull-btn').addEventListener('click', pullRepository);
+        document.getElementById('install-req-btn').addEventListener('click', installRequirements);
+        
+        // Set up form handler
+        document.getElementById('clone-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const repoUrl = document.getElementById('repo-url').value;
+            const branch = document.getElementById('branch').value;
+            cloneRepository(repoUrl, branch);
+        });
+        
+        // Add initial log message
+        addToLog('Git management page loaded.');
+    });
+</script>
+{% endblock %}

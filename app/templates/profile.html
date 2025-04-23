@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">User Profile</h1>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md max-w-2xl">
+        {% if message %}
+        <div class="mb-4 p-3 rounded {% if success %}bg-green-800{% else %}bg-red-800{% endif %}">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/profile" class="space-y-6">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-400">Username</label>
+                <div class="mt-1">
+                    <input type="text" name="username" id="username" value="{{ user.username }}" disabled
+                        class="bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5">
+                </div>
+            </div>
+
+            <div>
+                <label for="role" class="block text-sm font-medium text-gray-400">Role</label>
+                <div class="mt-1">
+                    <input type="text" name="role" id="role" value="{{ user.role }}" disabled
+                        class="bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5">
+                </div>
+            </div>
+
+            <div>
+                <label for="avatar_input" class="block text-sm font-medium text-gray-400">Avatar</label>
+                <div class="mt-1">
+                    <input type="text" name="avatar_input" id="avatar_input"
+                        value="{{ user.avatar_url or user.discord_id or '' }}"
+                        class="bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5"
+                        placeholder="Enter Discord ID or direct URL to image">
+                </div>
+                <p class="mt-1 text-sm text-gray-400">
+                    Zadejte buď Discord ID uživatele nebo přímý odkaz na obrázek (PNG, JPG, atd.).<br>
+                    <strong>Discord ID:</strong> Zapněte vývojářský režim v Discordu (Nastavení > Pokročilé > Vývojářský režim),
+                    klikněte pravým tlačítkem na jméno uživatele a vyberte "Kopírovat ID".<br>
+                    <strong>URL obrázku:</strong> Vložte přímý odkaz na obrázek (např. https://example.com/avatar.png).
+                </p>
+            </div>
+
+            <!-- Skrytá pole pro zpracování na serveru -->
+            <input type="hidden" name="discord_id" id="discord_id" value="">
+            <input type="hidden" name="avatar_url" id="avatar_url" value="">
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-400">New Password (leave blank to keep current)</label>
+                <div class="mt-1">
+                    <input type="password" name="password" id="password"
+                        class="bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5"
+                        placeholder="Enter new password">
+                </div>
+            </div>
+
+            <div>
+                <label for="confirm_password" class="block text-sm font-medium text-gray-400">Confirm New Password</label>
+                <div class="mt-1">
+                    <input type="password" name="confirm_password" id="confirm_password"
+                        class="bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5"
+                        placeholder="Confirm new password">
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit"
+                    class="py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md font-medium">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md max-w-2xl">
+        <h2 class="text-xl font-semibold mb-4">Profile Preview</h2>
+        <div class="flex items-center">
+            <div id="preview-avatar" class="w-16 h-16 rounded-full mr-4 bg-gray-700 flex items-center justify-center text-xl font-bold overflow-hidden">
+                {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" alt="User Avatar" class="w-full h-full object-cover">
+                {% elif user.discord_avatar_url %}
+                <img src="{{ user.discord_avatar_url }}" alt="Discord Avatar" class="w-full h-full object-cover">
+                {% elif user.discord_id %}
+                <img src="https://cdn.discordapp.com/avatars/{{ user.discord_id }}/{{ user.discord_id }}.png"
+                     onerror="this.src='https://cdn.discordapp.com/embed/avatars/' + (parseInt('{{ user.discord_id }}') % 5) + '.png';"
+                     alt="Discord Avatar" class="w-full h-full object-cover">
+                {% else %}
+                {{ user.username[0] | upper }}
+                {% endif %}
+            </div>
+            <div>
+                <p class="text-lg font-medium">{{ user.username }}</p>
+                <p id="avatar-source" class="text-sm text-gray-400">
+                {% if user.avatar_url %}
+                Používá vlastní URL obrázku
+                {% elif user.discord_avatar_url %}
+                Používá Discord avatar (ID: {{ user.discord_id }}, aktualizováno: {{ user.last_avatar_update.strftime('%d.%m.%Y %H:%M') if user.last_avatar_update else 'nikdy' }})
+                {% elif user.discord_id %}
+                Používá Discord avatar (ID: {{ user.discord_id }}, čeká na aktualizaci)
+                {% else %}
+                Žádný avatar nenastaven
+                {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const avatarInput = document.getElementById('avatar_input');
+        const discordIdField = document.getElementById('discord_id');
+        const avatarUrlField = document.getElementById('avatar_url');
+        const form = document.querySelector('form');
+
+        // Funkce pro rozlišení mezi Discord ID a URL obrázku
+        function processAvatarInput(value) {
+            // Vyčistit hodnotu
+            value = value.trim();
+
+            // Pokud je prázdné, vyčistit obě pole
+            if (!value) {
+                discordIdField.value = '';
+                avatarUrlField.value = '';
+                return;
+            }
+
+            // Kontrola, zda jde o URL obrázku
+            const isImageUrl = /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i.test(value) ||
+                               /^https?:\/\/cdn\.discordapp\.com\/.+/i.test(value);
+
+            // Kontrola, zda jde o Discord ID (pouze číslice)
+            const isDiscordId = /^\d+$/.test(value);
+
+            if (isImageUrl) {
+                // Je to URL obrázku
+                avatarUrlField.value = value;
+                discordIdField.value = '';
+            } else if (isDiscordId) {
+                // Je to Discord ID
+                discordIdField.value = value;
+                avatarUrlField.value = '';
+            } else {
+                // Není to ani jedno, zkusíme to jako Discord ID
+                discordIdField.value = value;
+                avatarUrlField.value = '';
+            }
+        }
+
+        // Zpracovat hodnotu při načtení stránky
+        processAvatarInput(avatarInput.value);
+
+        // Zpracovat hodnotu při změně vstupu
+        avatarInput.addEventListener('input', function() {
+            processAvatarInput(this.value);
+        });
+
+        // Zpracovat hodnotu před odesláním formuláře
+        form.addEventListener('submit', function() {
+            processAvatarInput(avatarInput.value);
+        });
+
+        // Funkce pro aktualizaci náhledu avataru
+        function updateAvatarPreview(value) {
+            const previewAvatar = document.getElementById('preview-avatar');
+            const avatarSource = document.getElementById('avatar-source');
+            const username = '{{ user.username }}';
+
+            // Vyčistit aktuální obsah
+            previewAvatar.innerHTML = '';
+
+            // Kontrola, zda jde o URL obrázku
+            const isImageUrl = /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i.test(value) ||
+                               /^https?:\/\/cdn\.discordapp\.com\/.+/i.test(value);
+
+            // Kontrola, zda jde o Discord ID (pouze číslice)
+            const isDiscordId = /^\d+$/.test(value);
+
+            if (!value) {
+                // Žádná hodnota - zobrazit iniciály
+                previewAvatar.textContent = username.charAt(0).toUpperCase();
+                avatarSource.textContent = 'Žádný avatar nenastaven';
+            } else if (isImageUrl) {
+                // URL obrázku
+                const img = document.createElement('img');
+                img.src = value;
+                img.alt = 'User Avatar';
+                img.className = 'w-full h-full object-cover';
+                img.onerror = function() {
+                    previewAvatar.textContent = username.charAt(0).toUpperCase();
+                    avatarSource.textContent = 'Neplatná URL obrázku';
+                };
+                previewAvatar.appendChild(img);
+                avatarSource.textContent = 'Používá vlastní URL obrázku';
+            } else if (isDiscordId) {
+                // Discord ID
+                const img = document.createElement('img');
+                img.src = `https://cdn.discordapp.com/avatars/${value}/${value}.png`;
+                img.alt = 'Discord Avatar';
+                img.className = 'w-full h-full object-cover';
+                img.onerror = function() {
+                    // Použít výchozí Discord avatar
+                    const discriminator = parseInt(value) % 5;
+                    this.src = `https://cdn.discordapp.com/embed/avatars/${discriminator}.png`;
+                };
+                previewAvatar.appendChild(img);
+                avatarSource.textContent = `Používá Discord avatar (ID: ${value})`;
+            } else {
+                // Neplatná hodnota
+                previewAvatar.textContent = username.charAt(0).toUpperCase();
+                avatarSource.textContent = 'Neplatný formát vstupu';
+            }
+        }
+
+        // Aktualizovat náhled při načtení stránky
+        updateAvatarPreview(avatarInput.value);
+
+        // Aktualizovat náhled při změně vstupu
+        avatarInput.addEventListener('input', function() {
+            updateAvatarPreview(this.value);
+            processAvatarInput(this.value);
+        });
+    });
+</script>
+{% endblock %}

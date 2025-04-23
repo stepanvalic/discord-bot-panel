@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Discord Settings - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Discord Settings</h1>
+        <button id="update-avatars-btn" class="py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md font-medium">
+            Update Avatars Now
+        </button>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Discord Bot Configuration</h2>
+
+        <form id="discord-settings-form" class="space-y-4">
+            <div>
+                <label for="discord-bot-token" class="block text-sm font-medium text-gray-400">Discord Bot Token</label>
+                <input type="password" id="discord-bot-token" name="discord_bot_token"
+                       class="mt-1 bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5"
+                       placeholder="Enter Discord bot token">
+                <p class="mt-1 text-sm text-gray-400">
+                    This token is used to fetch avatars from Discord API. The bot should have the "Read User" permission.
+                </p>
+            </div>
+
+            <div>
+                <label for="avatar-update-interval" class="block text-sm font-medium text-gray-400">Avatar Update Interval (minutes)</label>
+                <input type="number" id="avatar-update-interval" name="avatar_update_interval" min="5" max="1440"
+                       class="mt-1 bg-gray-700 border border-gray-600 text-white rounded-md block w-full p-2.5"
+                       placeholder="60">
+                <p class="mt-1 text-sm text-gray-400">
+                    How often the system should check for updated avatars (in minutes). Minimum: 5, Maximum: 1440 (24 hours)
+                </p>
+            </div>
+
+            <div class="pt-4">
+                <button type="submit" class="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-md font-medium">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">How It Works</h2>
+        <div class="space-y-2 text-gray-300">
+            <p>The Discord avatar system works as follows:</p>
+            <ol class="list-decimal list-inside space-y-2 pl-4">
+                <li>Users provide their Discord ID in their profile settings</li>
+                <li>The system periodically fetches avatars from Discord API using the bot token</li>
+                <li>Avatars are stored in the database and displayed in the UI</li>
+                <li>The bot runs in offline mode and only connects to Discord API when fetching avatars</li>
+            </ol>
+            <p class="mt-4">
+                <strong>Note:</strong> The bot token is stored securely in the database and is only used for fetching avatars.
+                The bot does not need to be added to any Discord server.
+            </p>
+        </div>
+    </div>
+
+    <div id="status-message" class="hidden p-4 rounded-md">
+        <!-- Status messages will be displayed here -->
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md mt-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Avatar Update Logs</h2>
+            <button id="refresh-logs-btn" class="py-1 px-3 bg-blue-600 hover:bg-blue-700 rounded-md text-sm font-medium">
+                Refresh Logs
+            </button>
+        </div>
+        <div class="bg-gray-900 p-4 rounded-md">
+            <pre id="avatar-logs" class="whitespace-pre-wrap text-sm h-64 overflow-y-auto">Loading logs...</pre>
+        </div>
+        <p class="mt-2 text-sm text-gray-400">
+            These logs show the most recent avatar update operations. Refresh to see the latest entries.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load current settings
+        loadDiscordSettings();
+
+        // Set up form submission
+        const form = document.getElementById('discord-settings-form');
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveDiscordSettings();
+        });
+
+        // Set up update avatars button
+        const updateButton = document.getElementById('update-avatars-btn');
+        updateButton.addEventListener('click', function() {
+            updateAvatars();
+        });
+
+        // Set up refresh logs button
+        const refreshLogsButton = document.getElementById('refresh-logs-btn');
+        refreshLogsButton.addEventListener('click', function() {
+            fetchAvatarLogs();
+        });
+
+        // Load initial logs
+        fetchAvatarLogs();
+    });
+
+    // Function to load Discord settings
+    async function loadDiscordSettings() {
+        try {
+            const response = await fetch('/api/discord/settings');
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            if (!response.ok) {
+                showStatusMessage('Error loading settings: ' + response.statusText, 'error');
+                return;
+            }
+
+            const data = await response.json();
+
+            // Populate form fields
+            document.getElementById('discord-bot-token').value = data.discord_bot_token || '';
+            document.getElementById('avatar-update-interval').value = data.avatar_update_interval || 60;
+
+        } catch (error) {
+            console.error('Error loading Discord settings:', error);
+            showStatusMessage('Error loading settings: ' + error.message, 'error');
+        }
+    }
+
+    // Function to save Discord settings
+    async function saveDiscordSettings() {
+        try {
+            const token = document.getElementById('discord-bot-token').value;
+            const interval = parseInt(document.getElementById('avatar-update-interval').value);
+
+            // Validate interval
+            if (isNaN(interval) || interval < 5 || interval > 1440) {
+                showStatusMessage('Interval must be between 5 and 1440 minutes', 'error');
+                return;
+            }
+
+            const response = await fetch('/api/discord/settings', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    discord_bot_token: token,
+                    avatar_update_interval: interval
+                })
+            });
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                showStatusMessage('Error saving settings: ' + (errorData.detail || response.statusText), 'error');
+                return;
+            }
+
+            showStatusMessage('Settings saved successfully', 'success');
+
+        } catch (error) {
+            console.error('Error saving Discord settings:', error);
+            showStatusMessage('Error saving settings: ' + error.message, 'error');
+        }
+    }
+
+    // Function to trigger avatar update
+    async function updateAvatars() {
+        try {
+            const updateButton = document.getElementById('update-avatars-btn');
+            updateButton.textContent = 'Updating...';
+            updateButton.disabled = true;
+
+            const response = await fetch('/api/discord/update-avatars', {
+                method: 'POST'
+            });
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                showStatusMessage('Error updating avatars: ' + (errorData.detail || response.statusText), 'error');
+                updateButton.textContent = 'Update Avatars Now';
+                updateButton.disabled = false;
+                return;
+            }
+
+            const data = await response.json();
+            showStatusMessage(data.message, data.status === 'success' ? 'success' : 'warning');
+
+            updateButton.textContent = 'Update Avatars Now';
+            updateButton.disabled = false;
+
+        } catch (error) {
+            console.error('Error updating avatars:', error);
+            showStatusMessage('Error updating avatars: ' + error.message, 'error');
+
+            const updateButton = document.getElementById('update-avatars-btn');
+            updateButton.textContent = 'Update Avatars Now';
+            updateButton.disabled = false;
+        }
+    }
+
+    // Function to show status message
+    function showStatusMessage(message, type) {
+        const statusDiv = document.getElementById('status-message');
+        statusDiv.textContent = message;
+        statusDiv.classList.remove('hidden', 'bg-green-700', 'bg-red-700', 'bg-yellow-700');
+
+        if (type === 'success') {
+            statusDiv.classList.add('bg-green-700');
+        } else if (type === 'error') {
+            statusDiv.classList.add('bg-red-700');
+        } else if (type === 'warning') {
+            statusDiv.classList.add('bg-yellow-700');
+        }
+
+        statusDiv.classList.remove('hidden');
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            statusDiv.classList.add('hidden');
+        }, 5000);
+    }
+
+    // Function to fetch avatar update logs
+    async function fetchAvatarLogs() {
+        try {
+            const logsElement = document.getElementById('avatar-logs');
+            logsElement.textContent = 'Loading logs...';
+
+            const response = await fetch('/api/discord/logs');
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            if (!response.ok) {
+                logsElement.textContent = 'Error loading logs: ' + response.statusText;
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.logs && data.logs.length > 0) {
+                logsElement.textContent = data.logs.join('\n');
+            } else {
+                logsElement.textContent = 'No logs available.';
+            }
+
+            // Scroll to bottom of logs
+            logsElement.scrollTop = logsElement.scrollHeight;
+
+        } catch (error) {
+            console.error('Error fetching avatar logs:', error);
+            document.getElementById('avatar-logs').textContent = 'Error loading logs: ' + error.message;
+        }
+    }
+</script>
+{% endblock %}

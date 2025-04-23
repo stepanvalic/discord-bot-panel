@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Discord Bot Panel{% endblock %}
+
+{% block auth_content %}
+<div class="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-md">
+    <h1 class="text-2xl font-bold mb-6 text-center">Register First Admin</h1>
+
+    <form method="post" action="/register" class="space-y-4" id="register-form">
+        <div>
+            <label for="username" class="block text-sm font-medium mb-1">Username</label>
+            <input type="text" id="username" name="username" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" required>
+        </div>
+
+        <div>
+            <label for="password" class="block text-sm font-medium mb-1">Password</label>
+            <input type="password" id="password" name="password" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" required minlength="8">
+        </div>
+
+        <div>
+            <label for="confirm-password" class="block text-sm font-medium mb-1">Confirm Password</label>
+            <input type="password" id="confirm-password" name="confirm-password" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" required>
+        </div>
+
+        {% if error %}
+        <div class="text-red-500 text-sm">{{ error }}</div>
+        {% endif %}
+        <div id="error-message" class="text-red-500 text-sm hidden"></div>
+
+        <button type="submit" class="w-full py-2 px-4 bg-primary-600 hover:bg-primary-700 rounded-md font-medium">
+            Register
+        </button>
+    </form>
+
+    <div class="mt-4 text-center text-sm">
+        <a href="/login" class="text-primary-400 hover:text-primary-300">Back to login</a>
+    </div>
+</div>
+
+<script>
+    document.getElementById('register-form').addEventListener('submit', (e) => {
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirm-password').value;
+        const errorMessage = document.getElementById('error-message');
+
+        // Validate passwords match
+        if (password !== confirmPassword) {
+            e.preventDefault();
+            errorMessage.textContent = 'Passwords do not match';
+            errorMessage.classList.remove('hidden');
+            return false;
+        }
+
+        return true;
+    });
+</script>
+{% endblock %}

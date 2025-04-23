@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Discord Bot Panel{% endblock %}
+
+{% block head %}
+<style>
+    .console-output {
+        font-family: monospace;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        max-height: 400px;
+        background-color: #1a1a1a;
+        padding: 1rem;
+        border-radius: 0.375rem;
+    }
+
+    .console-output .info { color: #3b82f6; }
+    .console-output .success { color: #10b981; }
+    .console-output .warning { color: #f59e0b; }
+    .console-output .error { color: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Dashboard</h1>
+        <div class="flex space-x-2">
+            <form action="/api/bot/start" method="post" class="inline" id="alt-start-form">
+                <button type="submit" class="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-md font-medium" id="alt-start-btn">
+                    Start
+                </button>
+            </form>
+            <form action="/api/bot/restart" method="post" class="inline" id="alt-restart-form">
+                <button type="submit" class="py-2 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-md font-medium" id="alt-restart-btn">
+                    Restart
+                </button>
+            </form>
+            <form action="/api/bot/stop" method="post" class="inline" id="alt-stop-form">
+                <button type="submit" class="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-md font-medium" id="alt-stop-btn">
+                    Stop
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Funkce pro kontrolu stavu bota před odesláním formuláře
+        function setupAltButtons() {
+            // Start form
+            document.getElementById('alt-start-form').addEventListener('submit', function(e) {
+                if (window.botRunning) {
+                    e.preventDefault();
+                    alert('Bot je již spuštěn!');
+                    return false;
+                }
+                return true;
+            });
+
+            // Restart form
+            document.getElementById('alt-restart-form').addEventListener('submit', function(e) {
+                if (!window.botRunning) {
+                    e.preventDefault();
+                    alert('Bot je vypnutý! Nejprve ho musíte spustit.');
+                    return false;
+                }
+                return true;
+            });
+
+            // Stop form
+            document.getElementById('alt-stop-form').addEventListener('submit', function(e) {
+                if (!window.botRunning) {
+                    e.preventDefault();
+                    alert('Bot je vypnutý! Nejprve ho musíte spustit.');
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        // Přidáme inicializaci po načtení stránky
+        document.addEventListener('DOMContentLoaded', setupAltButtons);
+    </script>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 class="text-lg font-semibold mb-4">Status</h2>
+            <div class="space-y-2">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">State:</span>
+                    <span id="bot-state" class="font-medium">Loading...</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">PID:</span>
+                    <span id="bot-pid" class="font-medium">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Uptime:</span>
+                    <span id="bot-uptime" class="font-medium">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Entrypoint:</span>
+                    <span id="bot-entrypoint" class="font-medium">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Console Output</h2>
+            <button id="clear-console-btn" class="py-1 px-3 bg-gray-600 hover:bg-gray-700 rounded-md text-sm font-medium">
+                Clear Console
+            </button>
+        </div>
+        <div id="console-output" class="console-output">
+            Connecting to bot logs...
+        </div>
+    </div>
+</div>
+
+<script>
+    // Function to fetch bot status
+    async function fetchBotStatus() {
+        try {
+            const response = await fetch('/api/bot/status');
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+
+            const data = await response.json();
+
+            // Update UI
+            document.getElementById('bot-state').textContent = data.running ? 'Running' : 'Stopped';
+            document.getElementById('bot-state').className = data.running ? 'font-medium text-green-500' : 'font-medium text-red-500';
+            document.getElementById('bot-pid').textContent = data.pid || '-';
+            document.getElementById('bot-uptime').textContent = data.uptime || '-';
+            document.getElementById('bot-entrypoint').textContent = data.entrypoint || '-';
+
+            // Store bot status globally for button handlers
+            window.botRunning = data.running;
+
+            // Update button visual states for alt buttons
+            if (data.running) {
+                document.getElementById('alt-start-btn').classList.add('opacity-50');
+                document.getElementById('alt-restart-btn').classList.remove('opacity-50');
+                document.getElementById('alt-stop-btn').classList.remove('opacity-50');
+            } else {
+                document.getElementById('alt-start-btn').classList.remove('opacity-50');
+                document.getElementById('alt-restart-btn').classList.add('opacity-50');
+                document.getElementById('alt-stop-btn').classList.add('opacity-50');
+            }
+        } catch (error) {
+            console.error('Error fetching bot status:', error);
+        }
+    }
+
+    // Function to control the bot
+    async function controlBot(action) {
+        // Add debug log to console output
+        const consoleOutput = document.getElementById('console-output');
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const timestamp = `${hours}:${minutes}`;
+
+        // Check if the action is valid based on bot status
+        if ((action === 'restart' || action === 'stop') && !window.botRunning) {
+            // Bot is not running, show alert
+            alert('Bot je vypnutý! Nejprve ho musíte spustit.');
+            consoleOutput.innerHTML += `<div class="warning"><span class="text-gray-500">[${timestamp}]</span> Nelze ${action === 'restart' ? 'restartovat' : 'zastavit'} bota, protože není spuštěn.</div>`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            return;
+        }
+
+        if (action === 'start' && window.botRunning) {
+            // Bot is already running, show alert
+            alert('Bot je již spuštěn!');
+            consoleOutput.innerHTML += `<div class="warning"><span class="text-gray-500">[${timestamp}]</span> Bot je již spuštěn.</div>`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            return;
+        }
+
+        // Log the action attempt
+        consoleOutput.innerHTML += `<div class="info"><span class="text-gray-500">[${timestamp}]</span> Attempting to ${action} the bot...</div>`;
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+        try {
+            console.log(`Attempting to ${action} the bot...`);
+
+            // Disable all buttons during the action
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('restart-btn').disabled = true;
+            document.getElementById('stop-btn').disabled = true;
+
+            // Show loading state
+            const actionButton = document.getElementById(`${action}-btn`);
+            const originalText = actionButton.textContent;
+            actionButton.textContent = action === 'start' ? 'Starting...' :
+                                      action === 'stop' ? 'Stopping...' : 'Restarting...';
+
+            // Log the fetch attempt
+            console.log(`Sending POST request to /api/bot/${action}`);
+
+            const response = await fetch(`/api/bot/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+
+            console.log(`Received response with status: ${response.status}`);
+
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                console.log('Unauthorized, redirecting to login');
+                window.location.href = '/login';
+                return;
+            }
+
+            // Check for errors
+            if (!response.ok) {
+                console.log(`Response not OK: ${response.status} ${response.statusText}`);
+                let errorMessage;
+                try {
+                    const data = await response.json();
+                    errorMessage = data.detail || `Error during ${action} operation`;
+                } catch (jsonError) {
+                    console.error('Failed to parse error response:', jsonError);
+                    errorMessage = `Error during ${action} operation: ${response.statusText}`;
+                }
+
+                console.error(errorMessage);
+
+                // Add error to console output
+                consoleOutput.innerHTML += `<div class="error"><span class="text-gray-500">[${timestamp}]</span> ERROR: ${errorMessage}</div>`;
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            } else {
+                // Success response
+                try {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+
+                    // Add success message to console
+                    consoleOutput.innerHTML += `<div class="success"><span class="text-gray-500">[${timestamp}]</span> Successfully ${action === 'start' ? 'started' : action === 'stop' ? 'stopped' : 'restarted'} the bot</div>`;
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                } catch (jsonError) {
+                    console.error('Failed to parse success response:', jsonError);
+                }
+            }
+
+            // Restore button text
+            actionButton.textContent = originalText;
+
+            // Refresh status
+            fetchBotStatus();
+        } catch (error) {
+            console.error(`Error ${action} bot:`, error);
+
+            // Add error to console output
+            consoleOutput.innerHTML += `<div class="error"><span class="text-gray-500">[${timestamp}]</span> ERROR: Failed to ${action} bot - ${error.message}</div>`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+            // Restore button text and state
+            document.getElementById(`${action}-btn`).textContent = action === 'start' ? 'Start' :
+                                                                 action === 'stop' ? 'Stop' : 'Restart';
+
+            // Refresh status to reset button states
+            fetchBotStatus();
+        }
+    }
+
+    // Connect to WebSocket for live logs
+    function connectWebSocket() {
+        const consoleOutput = document.getElementById('console-output');
+        consoleOutput.innerHTML = 'Connecting to bot logs...';
+
+        // Fetch initial logs via HTTP to ensure we have something to display
+        fetch('/api/bot/logs?limit=1000')
+            .then(response => response.json())
+            .then(data => {
+                if (data.logs && data.logs.length > 0 && data.logs[0] !== 'No logs available') {
+                    consoleOutput.innerHTML = '';
+                    data.logs.forEach(log => {
+                        // Add the log with color based on content
+                        let logClass = '';
+                        if (log.toLowerCase().includes('error')) {
+                            logClass = 'error';
+                        } else if (log.toLowerCase().includes('warn')) {
+                            logClass = 'warning';
+                        } else if (log.toLowerCase().includes('info')) {
+                            logClass = 'info';
+                        } else if (log.toLowerCase().includes('success')) {
+                            logClass = 'success';
+                        }
+
+                        // Add timestamp (HH:MM)
+                        const now = new Date();
+                        const hours = now.getHours().toString().padStart(2, '0');
+                        const minutes = now.getMinutes().toString().padStart(2, '0');
+                        const timestamp = `${hours}:${minutes}`;
+
+                        consoleOutput.innerHTML += `<div class="${logClass}"><span class="text-gray-500">[${timestamp}]</span> ${log}</div>`;
+                    });
+                    // Auto-scroll to bottom
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching initial logs:', error);
+            })
+            .finally(() => {
+                // Connect to WebSocket for live updates
+                connectWebSocketLive();
+            });
+    }
+
+    // Connect to WebSocket for live log updates
+    function connectWebSocketLive() {
+        const consoleOutput = document.getElementById('console-output');
+        const ws = new WebSocket(`ws://${window.location.host}/api/bot/ws/logs`);
+
+        ws.onopen = () => {
+            // Only show this message if there are no logs yet
+            if (consoleOutput.innerHTML === 'Connecting to bot logs...') {
+                consoleOutput.innerHTML = 'Connected to bot logs. Waiting for output...';
+            }
+        };
+
+        ws.onmessage = (event) => {
+            const log = event.data;
+
+            // Skip ping messages
+            if (log === '__ping__') {
+                return;
+            }
+
+            // Clear the "waiting" message if it's the first log
+            if (consoleOutput.innerHTML === 'Connected to bot logs. Waiting for output...') {
+                consoleOutput.innerHTML = '';
+            }
+
+            // Add the log with color based on content
+            let logClass = '';
+            if (log.toLowerCase().includes('error')) {
+                logClass = 'error';
+            } else if (log.toLowerCase().includes('warn')) {
+                logClass = 'warning';
+            } else if (log.toLowerCase().includes('info')) {
+                logClass = 'info';
+            } else if (log.toLowerCase().includes('success')) {
+                logClass = 'success';
+            }
+
+            // Add timestamp (HH:MM)
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const timestamp = `${hours}:${minutes}`;
+
+            consoleOutput.innerHTML += `<div class="${logClass}"><span class="text-gray-500">[${timestamp}]</span> ${log}</div>`;
+
+            // Auto-scroll to bottom
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+            // Keep the WebSocket alive
+            ws.send('ping');
+        };
+
+        ws.onclose = () => {
+            consoleOutput.innerHTML += '<div class="error">Connection closed. Reconnecting in 5 seconds...</div>';
+            setTimeout(connectWebSocketLive, 5000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            consoleOutput.innerHTML += '<div class="error">WebSocket error. Reconnecting in 5 seconds...</div>';
+        };
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Inicializace globální proměnné pro stav bota
+        window.botRunning = false;
+
+        // Fetch initial status
+        fetchBotStatus();
+
+        // Set up refresh interval
+        setInterval(fetchBotStatus, 5000);
+
+        // Connect to WebSocket
+        connectWebSocket();
+
+        // Původní tlačítka již nepoužíváme, používáme formuláře
+
+        // Set up clear console button
+        document.getElementById('clear-console-btn').addEventListener('click', () => {
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.innerHTML = '<div class="info">Console cleared</div>';
+        });
+
+        // Nastavení alternativních tlačítek
+        setupAltButtons();
+
+        // Vzhled tlačítek se aktualizuje automaticky při každém volání fetchBotStatus
+    });
+</script>
+{% endblock %}

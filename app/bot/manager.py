@@ -1,553 +1,418 @@
 import os
-import sys
-import signal
 import subprocess
+import signal
 import time
 import psutil
-from datetime import datetime
-from typing import Optional, Dict, List
-from dotenv import load_dotenv
+from typing import Optional, Dict, Any, Tuple, List
+import logging
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+from app.utils.venv_manager import get_python_path, create_venv, install_requirements, get_requirements
 
-# Get bot settings from environment variables
-bot_dir_env = os.getenv("BOT_DIR", os.path.join(os.getcwd(), "workspace"))
-# Make sure we have an absolute path
-BOT_DIR = os.path.abspath(bot_dir_env) if os.path.isabs(bot_dir_env) else os.path.abspath(os.path.join(os.getcwd(), bot_dir_env.lstrip("./")))
-BOT_SCRIPT = os.getenv("BOT_SCRIPT", "bot.py")
-BOT_VENV = os.getenv("BOT_VENV", "venv")
-BOT_INSTALL_PATH = os.getenv("BOT_INSTALL_PATH", "")
+# Get logger
+logger = logging.getLogger("discord-bot-panel")
 
-# Import editable files manager
-from app.utils.editable_files import get_editable_files, update_editable_files
+# Global variables
+BOT_PROCESS = None
+BOT_START_TIME = None
+WORK_DIR = "work-bot"
+INSTALL_LOGS = []
+BOT_LOGS = []  # Store bot logs in memory
 
-# Function to update .env file with new bot script
-def _update_env_file(bot_script):
-    """Update the .env file with the new bot script."""
-    env_path = ".env"
+# Get absolute paths
+BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+ABS_WORK_DIR = os.path.join(BASE_DIR, WORK_DIR)
+ABS_LOG_DIR = os.path.join(BASE_DIR, "logs")
 
-    # Read the current .env file
-    with open(env_path, "r") as f:
-        lines = f.readlines()
 
-    # Update the BOT_SCRIPT line
-    updated_lines = []
-    for line in lines:
-        if line.startswith("BOT_SCRIPT="):
-            updated_lines.append(f"BOT_SCRIPT={bot_script}\n")
-        else:
-            updated_lines.append(line)
+def get_bot_status(entrypoint: str) -> Dict[str, Any]:
+    """
+    Get the current status of the bot
+    """
+    global BOT_PROCESS, BOT_START_TIME
 
-    # Write the updated .env file
-    with open(env_path, "w") as f:
-        f.writelines(updated_lines)
+    # Check if the process is running
+    if BOT_PROCESS is not None:
+        try:
+            # Check if the process is still running
+            if BOT_PROCESS.poll() is None:
+                # Calculate uptime
+                uptime = time.time() - BOT_START_TIME
+                hours, remainder = divmod(uptime, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                uptime_str = f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
 
-    # Update the global variable
-    global BOT_SCRIPT
-    BOT_SCRIPT = bot_script
+                return {
+                    "running": True,
+                    "pid": BOT_PROCESS.pid,
+                    "uptime": uptime_str,
+                    "entrypoint": entrypoint
+                }
+        except Exception as e:
+            logger.error(f"Error checking bot status: {e}")
 
-# Bot process
-bot_process: Optional[subprocess.Popen] = None
-bot_start_time: Optional[datetime] = None
-bot_logs: List[str] = []
-MAX_LOGS = 1000  # Maximum number of log lines to keep in memory
-
-def get_bot_status():
-    """Get the current status of the bot."""
-    global bot_process, bot_start_time
-
-    # Get bot settings
-    settings = get_bot_settings()
-
-    if bot_process is None:
-        return {
-            "status": "stopped",
-            "pid": None,
-            "uptime": None,
-            "memory_usage": None,
-            "cpu_usage": None,
-            "bot_dir": settings["bot_dir"],
-            "bot_script": settings["bot_script"]
-        }
-
-    # Check if process is still running
+    # Check if there's a bot process running even if BOT_PROCESS is None
     try:
-        if bot_process.poll() is None:
-            # Process is running
-            uptime = str(datetime.now() - bot_start_time).split('.')[0] if bot_start_time else None
-
-            # Get process resource usage
+        # Use psutil to find Python processes that might be our bot
+        bot_path = os.path.join(ABS_WORK_DIR, entrypoint)
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                process = psutil.Process(bot_process.pid)
-                memory_usage = f"{process.memory_info().rss / (1024 * 1024):.2f} MB"
-                cpu_usage = f"{process.cpu_percent(interval=0.1):.1f}%"
+                # Check if this is a Python process
+                if proc.info['name'] and 'python' in proc.info['name'].lower():
+                    # Check if the command line contains our bot path
+                    if proc.info['cmdline'] and any(bot_path in cmd for cmd in proc.info['cmdline']):
+                        pid = proc.info['pid']
+                        process = psutil.Process(pid)
+                        create_time = process.create_time()
+                        BOT_START_TIME = create_time
+                        # Calculate uptime
+                        uptime = time.time() - create_time
+                        hours, remainder = divmod(uptime, 3600)
+                        minutes, seconds = divmod(remainder, 60)
+                        uptime_str = f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+
+                        return {
+                            "running": True,
+                            "pid": pid,
+                            "uptime": uptime_str,
+                            "entrypoint": entrypoint
+                        }
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                memory_usage = "N/A"
-                cpu_usage = "N/A"
-
-            return {
-                "status": "running",
-                "pid": bot_process.pid,
-                "uptime": uptime,
-                "memory_usage": memory_usage,
-                "cpu_usage": cpu_usage,
-                "bot_dir": settings["bot_dir"],
-                "bot_script": settings["bot_script"],
-                "log_count": len(bot_logs)
-            }
-        else:
-            # Process has exited
-            exit_code = bot_process.returncode if bot_process else None
-            bot_process = None
-            bot_start_time = None
-            return {
-                "status": "stopped",
-                "pid": None,
-                "uptime": None,
-                "memory_usage": None,
-                "cpu_usage": None,
-                "exit_code": exit_code,
-                "bot_dir": settings["bot_dir"],
-                "bot_script": settings["bot_script"],
-                "log_count": len(bot_logs)
-            }
+                # Process might have terminated or we don't have access
+                continue
+            except Exception as e:
+                logger.error(f"Error checking process: {e}")
+                continue
     except Exception as e:
-        # Error checking process status
-        bot_process = None
-        bot_start_time = None
-        return {
-            "status": "error",
-            "pid": None,
-            "uptime": None,
-            "memory_usage": None,
-            "cpu_usage": None,
-            "error": str(e),
-            "bot_dir": settings["bot_dir"],
-            "bot_script": settings["bot_script"],
-            "log_count": len(bot_logs)
-        }
+        logger.error(f"Error checking for bot processes: {e}")
 
-def start_bot():
-    """Start the bot process."""
-    global bot_process, bot_start_time, bot_logs
-
-    # Check if bot is already running
-    if bot_process is not None and bot_process.poll() is None:
-        return {
-            "status": "already_running",
-            "pid": bot_process.pid,
-            "uptime": str(datetime.now() - bot_start_time).split('.')[0] if bot_start_time else None
-        }
-
-    try:
-        # Get absolute paths
-        abs_bot_dir = os.path.abspath(BOT_DIR)
-
-        # Ensure bot directory exists
-        os.makedirs(abs_bot_dir, exist_ok=True)
-
-        # Determine the correct python path based on OS
-        if os.name != "nt":  # Unix/Linux/Mac
-            python_path = "bin/python"
-        else:  # Windows
-            python_path = "Scripts\\python.exe"
-
-        venv_path = os.path.join(abs_bot_dir, BOT_VENV)
-        venv_python = os.path.join(venv_path, python_path)
-        bot_script_path = os.path.join(abs_bot_dir, BOT_SCRIPT)
-
-        # Check if the bot script exists
-        if not os.path.exists(bot_script_path):
-            return {
-                "status": "error",
-                "error": f"Bot script not found: {bot_script_path}"
-            }
-
-        # Check if the virtual environment exists, create if not
-        if not os.path.exists(venv_path):
-            try:
-                bot_logs.append(f"Creating virtual environment at {venv_path}")
-                subprocess.run(
-                    [sys.executable, "-m", "venv", venv_path],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                bot_logs.append("Virtual environment created successfully")
-            except subprocess.CalledProcessError as e:
-                return {
-                    "status": "error",
-                    "error": f"Failed to create virtual environment: {e.stderr}"
-                }
-
-        # Check if python exists in the virtual environment
-        if not os.path.exists(venv_python):
-            # Try to find python in the virtual environment
-            if os.name != "nt":  # Unix/Linux/Mac
-                possible_python_paths = [
-                    os.path.join(venv_path, "bin", "python"),
-                    os.path.join(venv_path, "bin", "python3")
-                ]
-            else:  # Windows
-                possible_python_paths = [
-                    os.path.join(venv_path, "Scripts", "python.exe"),
-                    os.path.join(venv_path, "Scripts", "python3.exe")
-                ]
-
-            for path in possible_python_paths:
-                if os.path.exists(path):
-                    venv_python = path
-                    break
-            else:
-                return {
-                    "status": "error",
-                    "error": f"Python interpreter not found in the virtual environment. Please check your Python installation."
-                }
-
-        # Check if requirements.txt exists and install if needed
-        requirements_path = os.path.join(abs_bot_dir, "requirements.txt")
-        if os.path.exists(requirements_path):
-            # Check if pip is installed in the virtual environment
-            if os.name != "nt":  # Unix/Linux/Mac
-                pip_path = os.path.join(venv_path, "bin", "pip")
-            else:  # Windows
-                pip_path = os.path.join(venv_path, "Scripts", "pip.exe")
-
-            if os.path.exists(pip_path):
-                # Install requirements if they exist
-                bot_logs.append(f"Installing requirements from {requirements_path}")
-                try:
-                    # Ensure pip is up to date
-                    subprocess.run(
-                        [pip_path, "install", "--upgrade", "pip"],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        cwd=abs_bot_dir
-                    )
-
-                    # Install requirements
-                    result = subprocess.run(
-                        [pip_path, "install", "-r", requirements_path],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        cwd=abs_bot_dir
-                    )
-                    bot_logs.append("Requirements installed successfully")
-
-                    # Verify that python-dotenv is installed
-                    try:
-                        dotenv_check = subprocess.run(
-                            [venv_python, "-c", "import dotenv; print('python-dotenv is installed')"],
-                            check=True,
-                            capture_output=True,
-                            text=True,
-                            cwd=abs_bot_dir
-                        )
-                        bot_logs.append(dotenv_check.stdout.strip())
-                    except subprocess.CalledProcessError:
-                        # If python-dotenv is not installed, install it directly
-                        bot_logs.append("Installing python-dotenv directly...")
-                        subprocess.run(
-                            [pip_path, "install", "python-dotenv"],
-                            check=True,
-                            capture_output=True,
-                            text=True,
-                            cwd=abs_bot_dir
-                        )
-                        bot_logs.append("python-dotenv installed successfully")
-                except subprocess.CalledProcessError as e:
-                    bot_logs.append(f"Warning: Failed to install requirements: {e.stderr}")
-
-        # Start the bot process
-        bot_logs.append(f"Starting bot with {venv_python} {bot_script_path}")
-        bot_process = subprocess.Popen(
-            [venv_python, bot_script_path],
-            cwd=abs_bot_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-
-        # Record start time
-        bot_start_time = datetime.now()
-
-        # Start log reader thread
-        import threading
-        threading.Thread(target=_read_bot_logs, daemon=True).start()
-
-        return {
-            "status": "started",
-            "pid": bot_process.pid,
-            "uptime": "0:00:00"
-        }
-    except Exception as e:
-        # Error starting process
-        bot_process = None
-        bot_start_time = None
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-def stop_bot():
-    """Stop the bot process."""
-    global bot_process, bot_start_time
-
-    if bot_process is None or bot_process.poll() is not None:
-        return {
-            "status": "not_running"
-        }
-
-    try:
-        # Try to terminate the process gracefully
-        bot_process.terminate()
-
-        # Wait for the process to terminate
-        for _ in range(10):  # Wait up to 5 seconds
-            if bot_process.poll() is not None:
-                break
-            time.sleep(0.5)
-
-        # If the process is still running, kill it
-        if bot_process.poll() is None:
-            bot_process.kill()
-            time.sleep(1)
-
-        # Get exit code
-        exit_code = bot_process.poll()
-
-        # Reset process and start time
-        bot_process = None
-        bot_start_time = None
-
-        return {
-            "status": "stopped",
-            "exit_code": exit_code
-        }
-    except Exception as e:
-        # Error stopping process
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-def restart_bot():
-    """Restart the bot process."""
-    stop_result = stop_bot()
-    if stop_result.get("status") in ["stopped", "not_running"]:
-        return start_bot()
-    else:
-        return stop_result
-
-def _read_bot_logs():
-    """Read logs from the bot process."""
-    global bot_process, bot_logs
-
-    if bot_process is None or bot_process.stdout is None:
-        return
-
-    try:
-        for line in bot_process.stdout:
-            # Add the line to the logs
-            bot_logs.append(line.strip())
-
-            # Trim logs if they exceed the maximum
-            if len(bot_logs) > MAX_LOGS:
-                bot_logs = bot_logs[-MAX_LOGS:]
-    except Exception:
-        pass
-
-def get_bot_logs(limit: int = 100):
-    """Get the most recent bot logs."""
-    global bot_logs
-
-    # Return the most recent logs
-    return bot_logs[-limit:] if bot_logs else []
-
-def get_bot_settings():
-    """Get the current bot settings."""
-    # Convert absolute path to relative path for display
-    project_root = os.getcwd()
-    rel_bot_dir = os.path.relpath(os.path.abspath(BOT_DIR), project_root)
-
-    # Use ./ prefix for relative paths in the current directory
-    if not rel_bot_dir.startswith('..'):
-        rel_bot_dir = './' + rel_bot_dir
-
+    # Bot is not running
     return {
-        "bot_dir": rel_bot_dir,
-        "bot_script": BOT_SCRIPT,
-        "bot_venv": BOT_VENV,
-        "bot_install_path": BOT_INSTALL_PATH,
-        "editable_files": get_editable_files()
+        "running": False,
+        "pid": None,
+        "uptime": None,
+        "entrypoint": entrypoint
     }
 
-def update_bot_settings(bot_script, bot_install_path=None, editable_files=None):
-    """Update the bot settings."""
-    # Update the .env file with the new bot script
-    _update_env_file(bot_script)
 
-    # Update the bot install path if provided
-    if bot_install_path is not None:
-        # Update the global variable
-        global BOT_INSTALL_PATH
-        BOT_INSTALL_PATH = bot_install_path
+def start_bot(entrypoint: str, use_venv: bool = True) -> Dict[str, Any]:
+    """
+    Start the bot process
+    """
+    global BOT_PROCESS, BOT_START_TIME
 
-        # Update the .env file with the new bot install path
-        env_path = ".env"
+    # Check if the bot is already running
+    if BOT_PROCESS is not None and BOT_PROCESS.poll() is None:
+        logger.warning("Bot is already running")
+        return get_bot_status(entrypoint)
 
-        # Read the current .env file
-        with open(env_path, "r") as f:
-            lines = f.readlines()
-
-        # Update the BOT_INSTALL_PATH line or add it if it doesn't exist
-        found = False
-        updated_lines = []
-        for line in lines:
-            if line.startswith("BOT_INSTALL_PATH="):
-                updated_lines.append(f"BOT_INSTALL_PATH={bot_install_path}\n")
-                found = True
-            else:
-                updated_lines.append(line)
-
-        # Add the line if it doesn't exist
-        if not found:
-            updated_lines.append(f"BOT_INSTALL_PATH={bot_install_path}\n")
-
-        # Write the updated .env file
-        with open(env_path, "w") as f:
-            f.writelines(updated_lines)
-
-    # Update editable files if provided
-    if editable_files is not None:
-        # Update the global variable in the editable_files module
-        update_editable_files(editable_files)
-
-        # Update the .env file with the new editable files
-        env_path = ".env"
-
-        # Read the current .env file
-        with open(env_path, "r") as f:
-            lines = f.readlines()
-
-        # Update the EDITABLE_FILES line or add it if it doesn't exist
-        editable_files_str = ",".join(editable_files)
-        editable_files_line = f"EDITABLE_FILES={editable_files_str}\n"
-
-        found = False
-        updated_lines = []
-        for line in lines:
-            if line.startswith("EDITABLE_FILES="):
-                updated_lines.append(editable_files_line)
-                found = True
-            else:
-                updated_lines.append(line)
-
-        # Add the line if it doesn't exist
-        if not found:
-            updated_lines.append(editable_files_line)
-
-        # Write the updated .env file
-        with open(env_path, "w") as f:
-            f.writelines(updated_lines)
-
-    # Return the updated settings
-    return get_bot_settings()
-
-def install_requirements():
-    """Install requirements from requirements.txt in the bot's virtual environment."""
     try:
-        # Get absolute paths
-        abs_bot_dir = os.path.abspath(BOT_DIR)
+        # Ensure the work directory exists
+        os.makedirs(ABS_WORK_DIR, exist_ok=True)
 
-        # Ensure bot directory exists
-        os.makedirs(abs_bot_dir, exist_ok=True)
+        # Start the bot process
+        bot_path = os.path.join(ABS_WORK_DIR, entrypoint)
+        abs_bot_path = os.path.abspath(bot_path)
 
-        # Check if requirements.txt exists
-        requirements_path = os.path.join(abs_bot_dir, "requirements.txt")
-        if not os.path.exists(requirements_path):
+        # Check if the bot file exists
+        if not os.path.exists(bot_path):
+            logger.error(f"Bot file not found: {bot_path}")
             return {
-                "status": "error",
-                "error": "Requirements file not found. Please create a requirements.txt file in the bot directory."
+                "running": False,
+                "pid": None,
+                "uptime": None,
+                "entrypoint": entrypoint,
+                "error": f"Bot file not found: {entrypoint}"
             }
 
-        # Determine the correct pip path based on OS
-        pip_path = "bin/pip" if os.name != "nt" else "Scripts\\pip.exe"
-        venv_path = os.path.join(abs_bot_dir, BOT_VENV)
-        venv_pip = os.path.join(venv_path, pip_path)
+        # Determine which Python executable to use
+        if use_venv:
+            # Check if the bot has its own virtual environment
+            bot_venv_path = os.path.join(ABS_WORK_DIR, "venv", "bin", "python")
+            if os.path.exists(bot_venv_path):
+                python_exe = bot_venv_path
+                logger.info(f"Using bot's virtual environment: {bot_venv_path}")
+            else:
+                # Fall back to the panel's virtual environment
+                python_exe = get_python_path()
+                logger.info(f"Using panel's virtual environment: {python_exe}")
+        else:
+            python_exe = "python"  # Use system Python
+            logger.info("Using system Python")
 
-        # Check if the virtual environment exists
-        if not os.path.exists(venv_path):
-            # Create virtual environment if it doesn't exist
+        # Create log file
+        log_file = os.path.join(ABS_LOG_DIR, "bot.log")
+        os.makedirs(ABS_LOG_DIR, exist_ok=True)
+
+        # Open log file for appending (not overwriting)
+        log_fd = open(log_file, "a")
+
+        # Start the bot process with environment variables
+        env = os.environ.copy()
+
+        # Add PYTHONPATH to include the work directory
+        if 'PYTHONPATH' in env:
+            env['PYTHONPATH'] = f"{WORK_DIR}:{env['PYTHONPATH']}"
+        else:
+            env['PYTHONPATH'] = WORK_DIR
+
+        # Add Discord token if available
+        env_file = os.path.join(ABS_WORK_DIR, '.env')
+        if os.path.exists(env_file):
+            logger.info("Found .env file, loading environment variables")
             try:
-                print(f"Creating virtual environment at {venv_path}")
-                subprocess.run(
-                    [sys.executable, "-m", "venv", venv_path],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                print("Virtual environment created successfully")
-            except subprocess.CalledProcessError as e:
-                return {
-                    "status": "error",
-                    "error": f"Failed to create virtual environment: {e.stderr}"
-                }
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        if line.strip() and not line.startswith('#'):
+                            key, value = line.strip().split('=', 1)
+                            env[key] = value
+                            logger.info(f"Loaded environment variable: {key}")
+            except Exception as e:
+                logger.error(f"Error loading .env file: {e}")
 
-        # Check again if pip exists after creating the virtual environment
-        if not os.path.exists(venv_pip):
-            # Try to find pip in the virtual environment
-            if os.name != "nt":
-                possible_pip_paths = [
-                    os.path.join(venv_path, "bin", "pip"),
-                    os.path.join(venv_path, "bin", "pip3")
-                ]
-            else:
-                possible_pip_paths = [
-                    os.path.join(venv_path, "Scripts", "pip.exe"),
-                    os.path.join(venv_path, "Scripts", "pip3.exe")
-                ]
+        # Print debug info
+        logger.info(f"Starting bot with Python: {python_exe}")
+        logger.info(f"Bot path: {bot_path}")
+        logger.info(f"Working directory: {WORK_DIR}")
 
-            for path in possible_pip_paths:
-                if os.path.exists(path):
-                    venv_pip = path
-                    break
-            else:
-                return {
-                    "status": "error",
-                    "error": "Pip not found in the virtual environment. Please check your Python installation."
-                }
-
-        # Install requirements
+        # Start the bot process with additional error handling
         try:
-            print(f"Installing requirements from {requirements_path} using {venv_pip}")
-            result = subprocess.run(
-                [venv_pip, "install", "-r", requirements_path],
-                check=True,
-                capture_output=True,
+            BOT_PROCESS = subprocess.Popen(
+                [python_exe, abs_bot_path],
+                cwd=ABS_WORK_DIR,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                cwd=abs_bot_dir
+                bufsize=1,
+                universal_newlines=True,
+                env=env,
+                # Ensure process doesn't inherit file descriptors
+                close_fds=True
             )
 
+            # Check if process started successfully
+            if BOT_PROCESS.poll() is not None:
+                # Process failed to start
+                error_msg = f"Bot process failed to start (exit code: {BOT_PROCESS.returncode})"
+                logger.error(error_msg)
+                return {
+                    "running": False,
+                    "pid": None,
+                    "uptime": None,
+                    "entrypoint": entrypoint,
+                    "error": error_msg
+                }
+        except Exception as e:
+            error_msg = f"Failed to start bot process: {str(e)}"
+            logger.error(error_msg)
             return {
-                "status": "success",
-                "message": "Requirements installed successfully",
-                "output": result.stdout
+                "running": False,
+                "pid": None,
+                "uptime": None,
+                "entrypoint": entrypoint,
+                "error": error_msg
             }
-        except subprocess.CalledProcessError as e:
-            return {
-                "status": "error",
-                "error": f"Failed to install requirements: {e.stderr}"
-            }
+
+        # Start a thread to read output and write to log file
+        import threading
+
+        def log_output():
+            global BOT_LOGS
+            while BOT_PROCESS and BOT_PROCESS.poll() is None:
+                try:
+                    line = BOT_PROCESS.stdout.readline()
+                    if line:
+                        # Add to in-memory logs
+                        BOT_LOGS.append(line.strip())
+                        # Keep only the last 5000 lines
+                        if len(BOT_LOGS) > 5000:
+                            BOT_LOGS = BOT_LOGS[-5000:]
+                        # Write to log file
+                        log_fd.write(line)
+                        log_fd.flush()
+                except Exception as e:
+                    logger.error(f"Error reading bot output: {e}")
+                    break
+            # Close log file when process ends
+            log_fd.close()
+
+        # Start log thread
+        log_thread = threading.Thread(target=log_output, daemon=True)
+        log_thread.start()
+
+        BOT_START_TIME = time.time()
+        logger.info(f"Bot started with PID {BOT_PROCESS.pid} using {'venv' if use_venv else 'system Python'}")
+
+        return get_bot_status(entrypoint)
     except Exception as e:
-        import traceback
+        logger.error(f"Error starting bot: {e}")
         return {
-            "status": "error",
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "running": False,
+            "pid": None,
+            "uptime": None,
+            "entrypoint": entrypoint,
+            "error": str(e)
         }
+
+
+def stop_bot(entrypoint: str = "bot.py") -> Dict[str, Any]:
+    """
+    Stop the bot process
+    """
+    global BOT_PROCESS, BOT_START_TIME
+
+    # Check if the bot is running
+    if BOT_PROCESS is None or BOT_PROCESS.poll() is not None:
+        logger.warning("Bot is not running")
+        return {"running": False, "pid": None, "uptime": None, "entrypoint": entrypoint}
+
+    try:
+        # Get the process
+        process = psutil.Process(BOT_PROCESS.pid)
+        pid = process.pid
+        logger.info(f"Stopping bot process with PID {pid}")
+
+        # First try to gracefully terminate with SIGINT (CTRL+C)
+        try:
+            # Send CTRL+C signal to the process and its children
+            for child in process.children(recursive=True):
+                try:
+                    logger.info(f"Sending SIGINT to child process {child.pid}")
+                    child.send_signal(signal.SIGINT)  # CTRL+C signal
+                except Exception as e:
+                    logger.warning(f"Failed to send SIGINT to child process: {e}")
+
+            logger.info(f"Sending SIGINT to main process {process.pid}")
+            process.send_signal(signal.SIGINT)  # CTRL+C signal
+
+            # Wait a short time for the process to handle the signal
+            time.sleep(1.0)
+        except Exception as e:
+            logger.warning(f"Error sending SIGINT: {e}")
+
+        # If the process is still running, try SIGTERM
+        try:
+            if process.is_running():
+                logger.info("Process still running, sending SIGTERM")
+                for child in process.children(recursive=True):
+                    try:
+                        logger.info(f"Sending SIGTERM to child process {child.pid}")
+                        child.terminate()
+                    except Exception as e:
+                        logger.warning(f"Failed to terminate child process: {e}")
+
+                logger.info(f"Sending SIGTERM to main process {process.pid}")
+                process.terminate()
+
+                # Wait for the process to terminate
+                try:
+                    logger.info("Waiting for process to terminate...")
+                    process.wait(timeout=5)
+                except psutil.TimeoutExpired:
+                    logger.warning("Process did not terminate within timeout")
+                    # Force kill if it doesn't terminate
+                    logger.info("Sending SIGKILL to process")
+                    process.kill()
+        except Exception as e:
+            logger.warning(f"Error terminating process: {e}")
+
+        # Make sure the process is actually terminated
+        try:
+            if process.is_running():
+                logger.warning("Process still running after kill attempts, forcing kill")
+                os.kill(pid, signal.SIGKILL)
+        except Exception as e:
+            logger.warning(f"Final kill attempt failed: {e}")
+
+        logger.info(f"Bot stopped (PID {BOT_PROCESS.pid})")
+
+        # Reset the process
+        BOT_PROCESS = None
+        BOT_START_TIME = None
+
+        return {"running": False, "pid": None, "uptime": None, "entrypoint": entrypoint}
+    except Exception as e:
+        logger.error(f"Error stopping bot: {e}")
+        return {"running": False, "pid": None, "uptime": None, "entrypoint": entrypoint, "error": str(e)}
+
+
+def restart_bot(entrypoint: str, use_venv: bool = True) -> Dict[str, Any]:
+    """
+    Restart the bot process
+    """
+    stop_bot(entrypoint)
+    return start_bot(entrypoint, use_venv)
+
+
+def install_bot_requirements() -> Tuple[bool, str, List[str]]:
+    """
+    Install the bot requirements
+    Returns a tuple of (success, message, log_lines)
+    """
+    global INSTALL_LOGS
+
+    # Clear previous logs
+    INSTALL_LOGS = []
+
+    # Create virtual environment if it doesn't exist
+    success, message = create_venv()
+    INSTALL_LOGS.append(message)
+
+    if not success:
+        return False, message, INSTALL_LOGS
+
+    # Install requirements
+    success, message, logs = install_requirements()
+    INSTALL_LOGS.extend(logs)
+
+    return success, message, INSTALL_LOGS
+
+
+def get_install_logs() -> List[str]:
+    """
+    Get the installation logs
+    """
+    global INSTALL_LOGS
+    return INSTALL_LOGS
+
+
+def get_bot_requirements() -> Tuple[bool, str, List[str]]:
+    """
+    Get the bot requirements
+    Returns a tuple of (success, message, requirements)
+    """
+    return get_requirements()
+
+
+def get_bot_logs(limit: int = 100) -> list[str]:
+    """
+    Get the bot logs
+    """
+    global BOT_LOGS
+
+    try:
+        # Return the last 'limit' logs from memory
+        return BOT_LOGS[-limit:] if BOT_LOGS else ["No logs available"]
+    except Exception as e:
+        logger.error(f"Error getting bot logs: {e}")
+        return [f"Error getting logs: {e}"]
+
+
+def read_bot_log_file(limit: int = 100) -> list[str]:
+    """
+    Read logs from the bot log file
+    """
+    logs = []
+    log_file = os.path.join(ABS_LOG_DIR, "bot.log")
+
+    try:
+        if os.path.exists(log_file):
+            with open(log_file, "r") as f:
+                # Read the last 'limit' lines
+                lines = f.readlines()
+                logs = [line.strip() for line in lines[-limit:]]
+    except Exception as e:
+        logger.error(f"Error reading bot log file: {e}")
+        logs.append(f"Error reading log file: {e}")
+
+    return logs
