@@ -1,0 +1,28 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Environment Variables
+.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+
+# Bot Directory (cloned separately)
+/bot/*
+
+# Logs
+*.log
+
+# Temporary SSH Keys
+temp_ssh/
+temp_ssh_key

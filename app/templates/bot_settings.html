@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}Bot Settings - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+    <h2 class="text-lg font-semibold mb-4">Bot Settings</h2>
+
+    <form id="bot-settings-form" class="space-y-4">
+        <div>
+            <label for="bot-dir" class="block text-sm font-medium text-gray-400 mb-1">Bot Directory</label>
+            <input type="text" id="bot-dir" name="bot_dir" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" readonly>
+            <p class="text-xs text-gray-500 mt-1">The directory where the bot is located. This cannot be changed.</p>
+        </div>
+
+        <div>
+            <label for="bot-script" class="block text-sm font-medium text-gray-400 mb-1">Bot Script</label>
+            <input type="text" id="bot-script" name="bot_script" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <p class="text-xs text-gray-500 mt-1">The script that will be executed to start the bot.</p>
+        </div>
+
+        <div>
+            <label for="bot-venv" class="block text-sm font-medium text-gray-400 mb-1">Virtual Environment</label>
+            <input type="text" id="bot-venv" name="bot_venv" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" readonly>
+            <p class="text-xs text-gray-500 mt-1">The virtual environment used to run the bot. This cannot be changed.</p>
+        </div>
+
+        <div>
+            <label for="bot-install-path" class="block text-sm font-medium text-gray-400 mb-1">Bot Install Path</label>
+            <input type="text" id="bot-install-path" name="bot_install_path" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <p class="text-xs text-gray-500 mt-1">The path where the bot should be installed. This is only accessible to administrators.</p>
+        </div>
+
+        <div>
+            <label for="editable-files" class="block text-sm font-medium text-gray-400 mb-1">Editable Files</label>
+            <div id="editable-files-container" class="space-y-2">
+                <div class="flex space-x-2">
+                    <input type="text" class="editable-file flex-grow bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., config.json or *.py">
+                    <button type="button" class="remove-file bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <button type="button" id="add-file" class="mt-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">
+                <i class="fas fa-plus mr-1"></i> Add File Pattern
+            </button>
+            <p class="text-xs text-gray-500 mt-1">Specify which files can be edited in the File Editor. You can use wildcards like *.json to match all files with a specific extension.</p>
+        </div>
+
+        <div class="flex space-x-4">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Save Settings
+            </button>
+            <button type="button" id="install-requirements" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500">
+                Install Requirements
+            </button>
+        </div>
+
+        <div class="mt-4">
+            <p class="text-sm text-gray-400">
+                <strong>Install Requirements:</strong> This will install all packages listed in the bot's requirements.txt file into the bot's virtual environment.
+                This is useful when you've added new dependencies to your bot or when you're setting up a new bot.
+            </p>
+        </div>
+    </form>
+
+    <div id="status-message" class="mt-4 hidden"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Get bot settings
+    async function getBotSettings() {
+        try {
+            const response = await fetch('/api/bot/settings', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const settings = await response.json();
+
+                // Update form fields
+                document.getElementById('bot-dir').value = settings.bot_dir;
+                document.getElementById('bot-script').value = settings.bot_script;
+                document.getElementById('bot-venv').value = settings.bot_venv;
+                document.getElementById('bot-install-path').value = settings.bot_install_path || '';
+
+                // Update editable files
+                updateEditableFilesUI(settings.editable_files || []);
+            } else {
+                showStatusMessage('Error loading settings. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Error getting bot settings:', error);
+            showStatusMessage('Error loading settings. Please try again.', 'error');
+        }
+    }
+
+    // Update editable files UI
+    function updateEditableFilesUI(files) {
+        const container = document.getElementById('editable-files-container');
+        container.innerHTML = '';
+
+        // Add at least one input field
+        if (files.length === 0) {
+            addEditableFileInput(container);
+        } else {
+            // Add input fields for each file pattern
+            files.forEach(file => {
+                addEditableFileInput(container, file);
+            });
+        }
+
+        // Add event listeners to remove buttons
+        document.querySelectorAll('.remove-file').forEach(button => {
+            button.addEventListener('click', function() {
+                if (document.querySelectorAll('.editable-file').length > 1) {
+                    this.parentElement.remove();
+                } else {
+                    // Don't remove the last input field, just clear it
+                    this.parentElement.querySelector('.editable-file').value = '';
+                }
+            });
+        });
+    }
+
+    // Add editable file input
+    function addEditableFileInput(container, value = '') {
+        const div = document.createElement('div');
+        div.className = 'flex space-x-2';
+        div.innerHTML = `
+            <input type="text" class="editable-file flex-grow bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., config.json or *.py" value="${value}">
+            <button type="button" class="remove-file bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+
+        container.appendChild(div);
+
+        // Add event listener to the new remove button
+        div.querySelector('.remove-file').addEventListener('click', function() {
+            if (document.querySelectorAll('.editable-file').length > 1) {
+                div.remove();
+            } else {
+                // Don't remove the last input field, just clear it
+                div.querySelector('.editable-file').value = '';
+            }
+        });
+    }
+
+    // Update bot settings
+    async function updateBotSettings(botScript, botInstallPath, editableFiles) {
+        try {
+            const response = await fetch('/api/bot/settings', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    bot_script: botScript,
+                    bot_install_path: botInstallPath,
+                    editable_files: editableFiles
+                })
+            });
+
+            if (response.ok) {
+                const settings = await response.json();
+                showStatusMessage('Settings updated successfully.', 'success');
+                return true;
+            } else {
+                const error = await response.json();
+                showStatusMessage(`Error updating settings: ${error.detail}`, 'error');
+                return false;
+            }
+        } catch (error) {
+            console.error('Error updating bot settings:', error);
+            showStatusMessage('Error updating settings. Please try again.', 'error');
+            return false;
+        }
+    }
+
+
+
+    // Form submission
+    document.getElementById('bot-settings-form').addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const botScript = document.getElementById('bot-script').value;
+        const botInstallPath = document.getElementById('bot-install-path').value;
+
+        if (!botScript) {
+            showStatusMessage('Bot script cannot be empty.', 'error');
+            return;
+        }
+
+        // Get editable files
+        const editableFiles = [];
+        document.querySelectorAll('.editable-file').forEach(input => {
+            const value = input.value.trim();
+            if (value) {
+                editableFiles.push(value);
+            }
+        });
+
+        const success = await updateBotSettings(botScript, botInstallPath, editableFiles);
+
+        if (success) {
+            // Reload settings
+            await getBotSettings();
+        }
+    });
+
+    // Add file button
+    document.getElementById('add-file').addEventListener('click', function() {
+        const container = document.getElementById('editable-files-container');
+        addEditableFileInput(container);
+    });
+
+    // Install requirements
+    async function installRequirements() {
+        try {
+            showStatusMessage('Installing requirements... This may take a while.', 'info');
+
+            const response = await fetch('/api/bot/install-requirements', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.status === 'success') {
+                showStatusMessage(`Requirements installed successfully: ${result.message}`, 'success');
+            } else {
+                showStatusMessage(`Error installing requirements: ${result.error || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error installing requirements:', error);
+            showStatusMessage('Error installing requirements. Please try again.', 'error');
+        }
+    }
+
+    // Show status message with info type
+    function showStatusMessage(message, type) {
+        const statusElement = document.getElementById('status-message');
+        statusElement.textContent = message;
+        statusElement.classList.remove('hidden', 'bg-green-900', 'bg-red-900', 'bg-blue-900');
+
+        if (type === 'success') {
+            statusElement.classList.add('bg-green-900', 'text-white', 'p-3', 'rounded');
+        } else if (type === 'error') {
+            statusElement.classList.add('bg-red-900', 'text-white', 'p-3', 'rounded');
+        } else if (type === 'info') {
+            statusElement.classList.add('bg-blue-900', 'text-white', 'p-3', 'rounded');
+        }
+
+        // Don't hide info messages automatically
+        if (type !== 'info') {
+            // Hide after 5 seconds
+            setTimeout(() => {
+                statusElement.classList.add('hidden');
+            }, 5000);
+        }
+    }
+
+    // Install requirements button
+    document.getElementById('install-requirements').addEventListener('click', installRequirements);
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        getBotSettings();
+    });
+</script>
+{% endblock %}

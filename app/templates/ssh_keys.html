@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}SSH Keys - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+    <h2 class="text-lg font-semibold mb-4">SSH Key Management</h2>
+
+    <div id="ssh-key-section" class="mb-6">
+        <div id="current-key" class="mb-4">
+            <h3 class="text-md font-medium mb-2">Current SSH Public Key</h3>
+            <div id="no-key-message" class="text-gray-400 italic">No SSH key has been generated yet.</div>
+            <pre id="public-key" class="bg-gray-900 p-3 rounded text-sm text-gray-300 overflow-x-auto hidden"></pre>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-md font-medium mb-2">Git Repository URL</h3>
+            <div class="flex space-x-2">
+                <input type="text" id="git-repo-url" class="flex-grow bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., git@github.com:username/repo.git">
+                <button id="save-repo-url" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500">
+                    Save
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">The Git repository URL to clone using SSH.</p>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-md font-medium mb-2">Repository Actions</h3>
+            <div class="flex space-x-2">
+                <button id="clone-repo" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <i class="fas fa-download mr-1"></i> Clone Repository
+                </button>
+                <button id="pull-repo" class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <i class="fas fa-sync mr-1"></i> Pull Changes
+                </button>
+            </div>
+            <div id="repo-status" class="text-sm text-gray-400 mt-2">Checking repository status...</div>
+        </div>
+
+        <button id="generate-key" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            Generate New SSH Key
+        </button>
+    </div>
+
+    <div class="border-t border-gray-700 pt-4">
+        <h3 class="text-md font-medium mb-2">What is this for?</h3>
+        <p class="text-gray-400 text-sm">
+            SSH keys are used for secure communication with Git repositories. The public key generated here can be added to your Git hosting service (like GitHub or GitLab) to allow the bot to pull updates automatically.
+        </p>
+        <p class="text-gray-400 text-sm mt-2">
+            Note: Generating a new key will invalidate any previous keys.
+        </p>
+    </div>
+
+    <div id="status-message" class="mt-4 hidden"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Get SSH key and repo URL
+    async function getSSHKey() {
+        try {
+            const response = await fetch('/api/ssh-keys/', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+
+                if (data.ssh_public_key) {
+                    // Show the public key
+                    document.getElementById('no-key-message').classList.add('hidden');
+                    const publicKeyElement = document.getElementById('public-key');
+                    publicKeyElement.textContent = data.ssh_public_key;
+                    publicKeyElement.classList.remove('hidden');
+                } else {
+                    // No key exists
+                    document.getElementById('no-key-message').classList.remove('hidden');
+                    document.getElementById('public-key').classList.add('hidden');
+                }
+
+                // Set Git repo URL if it exists
+                if (data.git_repo_url) {
+                    document.getElementById('git-repo-url').value = data.git_repo_url;
+                }
+
+                // Get repository status
+                getRepoStatus();
+            } else {
+                showStatusMessage('Error loading SSH key. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Error getting SSH key:', error);
+            showStatusMessage('Error loading SSH key. Please try again.', 'error');
+        }
+    }
+
+    // Generate SSH key
+    async function generateSSHKey() {
+        try {
+            showStatusMessage('Generating SSH key... This may take a moment.', 'info');
+
+            const response = await fetch('/api/ssh-keys/generate', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+
+                // Show the public key
+                document.getElementById('no-key-message').classList.add('hidden');
+                const publicKeyElement = document.getElementById('public-key');
+                publicKeyElement.textContent = data.ssh_public_key;
+                publicKeyElement.classList.remove('hidden');
+
+                showStatusMessage('SSH key generated successfully.', 'success');
+            } else {
+                const error = await response.json();
+                showStatusMessage(`Error generating SSH key: ${error.detail}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error generating SSH key:', error);
+            showStatusMessage('Error generating SSH key. Please try again.', 'error');
+        }
+    }
+
+    // Save Git repo URL
+    async function saveRepoUrl() {
+        try {
+            const repoUrl = document.getElementById('git-repo-url').value.trim();
+
+            if (!repoUrl) {
+                showStatusMessage('Repository URL cannot be empty.', 'error');
+                return;
+            }
+
+            const response = await fetch('/api/ssh-keys/repo', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    git_repo_url: repoUrl
+                })
+            });
+
+            if (response.ok) {
+                showStatusMessage('Repository URL saved successfully.', 'success');
+                // Update repository status
+                getRepoStatus();
+            } else {
+                const error = await response.json();
+                showStatusMessage(`Error saving repository URL: ${error.detail}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error saving repository URL:', error);
+            showStatusMessage('Error saving repository URL. Please try again.', 'error');
+        }
+    }
+
+    // Get repository status
+    async function getRepoStatus() {
+        try {
+            const response = await fetch('/api/ssh-keys/status', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const statusElement = document.getElementById('repo-status');
+
+                if (data.is_cloned) {
+                    statusElement.textContent = `Repository is cloned. URL: ${data.repo_url || 'Not set'}`;
+                    statusElement.classList.remove('text-red-400');
+                    statusElement.classList.add('text-green-400');
+
+                    // Enable pull button
+                    document.getElementById('pull-repo').disabled = false;
+                    document.getElementById('pull-repo').classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    statusElement.textContent = `Repository not cloned. URL: ${data.repo_url || 'Not set'}`;
+                    statusElement.classList.remove('text-green-400');
+                    statusElement.classList.add('text-red-400');
+
+                    // Disable pull button
+                    document.getElementById('pull-repo').disabled = true;
+                    document.getElementById('pull-repo').classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } else {
+                document.getElementById('repo-status').textContent = 'Error checking repository status.';
+            }
+        } catch (error) {
+            console.error('Error getting repository status:', error);
+            document.getElementById('repo-status').textContent = 'Error checking repository status.';
+        }
+    }
+
+    // Clone repository
+    async function cloneRepo() {
+        try {
+            showStatusMessage('Cloning repository... This may take a moment.', 'info');
+
+            const response = await fetch('/api/ssh-keys/clone', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                showStatusMessage(data.message, 'success');
+
+                // Update repository status
+                getRepoStatus();
+            } else {
+                const error = await response.json();
+                showStatusMessage(`Error cloning repository: ${error.detail}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error cloning repository:', error);
+            showStatusMessage('Error cloning repository. Please try again.', 'error');
+        }
+    }
+
+    // Pull repository
+    async function pullRepo() {
+        try {
+            showStatusMessage('Pulling latest changes... This may take a moment.', 'info');
+
+            const response = await fetch('/api/ssh-keys/pull', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                showStatusMessage(data.message, 'success');
+            } else {
+                const error = await response.json();
+                showStatusMessage(`Error pulling repository: ${error.detail}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error pulling repository:', error);
+            showStatusMessage('Error pulling repository. Please try again.', 'error');
+        }
+    }
+
+    // Show status message
+    function showStatusMessage(message, type) {
+        const statusElement = document.getElementById('status-message');
+        statusElement.textContent = message;
+        statusElement.classList.remove('hidden', 'bg-green-900', 'bg-red-900', 'bg-blue-900');
+
+        if (type === 'success') {
+            statusElement.classList.add('bg-green-900', 'text-white', 'p-3', 'rounded');
+        } else if (type === 'error') {
+            statusElement.classList.add('bg-red-900', 'text-white', 'p-3', 'rounded');
+        } else {
+            statusElement.classList.add('bg-blue-900', 'text-white', 'p-3', 'rounded');
+        }
+
+        // Hide after 5 seconds
+        setTimeout(() => {
+            statusElement.classList.add('hidden');
+        }, 5000);
+    }
+
+    // Event listeners
+    document.getElementById('generate-key').addEventListener('click', generateSSHKey);
+    document.getElementById('save-repo-url').addEventListener('click', saveRepoUrl);
+    document.getElementById('clone-repo').addEventListener('click', cloneRepo);
+    document.getElementById('pull-repo').addEventListener('click', pullRepo);
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        getSSHKey();
+    });
+</script>
+{% endblock %}

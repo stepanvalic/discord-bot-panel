@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Discord Bot Panel{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+    <!-- Bot Status Card -->
+    <div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-2">Bot Status</h2>
+        <div id="bot-status" class="flex items-center space-x-2">
+            <div class="w-3 h-3 rounded-full bg-gray-500"></div>
+            <span>Loading...</span>
+        </div>
+        <div id="bot-details" class="mt-2 text-sm text-gray-400">
+            <div id="bot-pid">PID: -</div>
+            <div id="bot-uptime">Uptime: -</div>
+            <div id="bot-memory" class="mt-1">Memory: -</div>
+            <div id="bot-cpu" class="mt-1">CPU: -</div>
+        </div>
+        <div class="mt-3">
+            <div class="text-xs text-gray-500 mb-1">Status History</div>
+            <div id="status-history" class="h-6 bg-gray-900 rounded overflow-hidden flex"></div>
+        </div>
+    </div>
+
+    <!-- Bot Controls Card -->
+    <div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-2">Bot Controls</h2>
+        <div class="flex space-x-2 mb-3">
+            <button id="start-button" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">
+                <i class="fas fa-play mr-1"></i> Start
+            </button>
+            <button id="restart-button" class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded">
+                <i class="fas fa-sync mr-1"></i> Restart
+            </button>
+            <button id="stop-button" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
+                <i class="fas fa-stop mr-1"></i> Stop
+            </button>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">Bot Script</div>
+        <div id="bot-script" class="text-sm text-gray-300 bg-gray-900 p-2 rounded mb-2 overflow-hidden text-ellipsis">Loading...</div>
+        <div class="text-xs text-gray-500 mb-1">Bot Directory</div>
+        <div id="bot-directory" class="text-sm text-gray-300 bg-gray-900 p-2 rounded overflow-hidden text-ellipsis">Loading...</div>
+    </div>
+
+    <!-- Quick Links Card -->
+    <div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-2">Quick Links</h2>
+        <ul class="space-y-1 text-sm">
+            <li>
+                <a href="/ssh-keys" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-key mr-1"></i> Manage SSH Keys
+                </a>
+            </li>
+            <li>
+                <a href="/webhook" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-webhook mr-1"></i> Configure Webhook
+                </a>
+            </li>
+            <li>
+                <a href="/files" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-file-code mr-1"></i> Edit Bot Files
+                </a>
+            </li>
+            <li>
+                <a href="/bot-settings" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-cog mr-1"></i> Bot Settings
+                </a>
+            </li>
+            <li>
+                <a href="/env" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-sliders-h mr-1"></i> Environment Variables
+                </a>
+            </li>
+        </ul>
+        <div class="mt-4">
+            <div class="text-xs text-gray-500 mb-1">Connection Status</div>
+            <div id="connection-status" class="flex items-center space-x-2">
+                <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+                <span class="text-xs">Connecting...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Console Output -->
+<div class="bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-700">
+    <div class="flex justify-between items-center mb-2">
+        <h2 class="text-lg font-semibold">Live Console Output</h2>
+        <div class="flex space-x-2">
+            <div class="flex items-center">
+                <label for="auto-scroll" class="text-sm text-gray-400 mr-2">Auto-scroll</label>
+                <input type="checkbox" id="auto-scroll" class="form-checkbox h-4 w-4 text-blue-600" checked>
+            </div>
+            <button id="clear-console" class="text-gray-400 hover:text-white text-sm">
+                <i class="fas fa-trash mr-1"></i> Clear
+            </button>
+        </div>
+    </div>
+    <div id="console-output" class="bg-gray-900 rounded p-2 h-96 overflow-y-auto console font-mono text-sm">
+        <div class="text-gray-400">Connecting to bot logs...</div>
+    </div>
+    <div class="flex justify-between items-center mt-2">
+        <div class="text-xs text-gray-500">
+            <span id="log-count">0</span> log entries
+        </div>
+        <div class="flex space-x-2">
+            <button id="download-logs" class="text-gray-400 hover:text-white text-xs">
+                <i class="fas fa-download mr-1"></i> Download Logs
+            </button>
+            <select id="log-filter" class="bg-gray-700 text-gray-300 text-xs rounded px-2 py-1 border border-gray-600">
+                <option value="all">All Logs</option>
+                <option value="info">Info Only</option>
+                <option value="error">Errors Only</option>
+                <option value="warning">Warnings Only</option>
+            </select>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Bot status elements
+    const botStatusIndicator = document.querySelector('#bot-status div');
+    const botStatusText = document.querySelector('#bot-status span');
+    const botPid = document.getElementById('bot-pid');
+    const botUptime = document.getElementById('bot-uptime');
+    const botMemory = document.getElementById('bot-memory');
+    const botCpu = document.getElementById('bot-cpu');
+    const statusHistory = document.getElementById('status-history');
+
+    // Bot info elements
+    const botScript = document.getElementById('bot-script');
+    const botDirectory = document.getElementById('bot-directory');
+
+    // Bot control buttons
+    const startButton = document.getElementById('start-button');
+    const restartButton = document.getElementById('restart-button');
+    const stopButton = document.getElementById('stop-button');
+
+    // Console output elements
+    const consoleOutput = document.getElementById('console-output');
+    const clearConsoleButton = document.getElementById('clear-console');
+    const autoScrollCheckbox = document.getElementById('auto-scroll');
+    const logCount = document.getElementById('log-count');
+    const downloadLogsButton = document.getElementById('download-logs');
+    const logFilter = document.getElementById('log-filter');
+
+    // Connection status
+    const connectionStatusIndicator = document.querySelector('#connection-status div');
+    const connectionStatusText = document.querySelector('#connection-status span');
+
+    // Status history
+    const statusHistoryData = [];
+    const MAX_HISTORY_POINTS = 30;
+
+    // Get bot status
+    async function getBotStatus() {
+        try {
+            const response = await fetch('/api/bot/status', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const status = await response.json();
+                updateBotStatus(status);
+            }
+        } catch (error) {
+            console.error('Error getting bot status:', error);
+        }
+    }
+
+    // Update bot status UI
+    function updateBotStatus(status) {
+        // Update status indicator
+        if (status.status === 'running') {
+            botStatusIndicator.className = 'w-3 h-3 rounded-full bg-green-500';
+            botStatusText.textContent = 'Running';
+            botPid.textContent = `PID: ${status.pid || '-'}`;
+            botUptime.textContent = `Uptime: ${status.uptime || '0:00:00'}`;
+            botMemory.textContent = `Memory: ${status.memory_usage || '-'}`;
+            botCpu.textContent = `CPU: ${status.cpu_usage || '-'}`;
+
+            // Update bot info if available
+            if (status.bot_script) {
+                botScript.textContent = status.bot_script;
+            }
+            if (status.bot_dir) {
+                botDirectory.textContent = status.bot_dir;
+            }
+        } else if (status.status === 'stopped') {
+            botStatusIndicator.className = 'w-3 h-3 rounded-full bg-red-500';
+            botStatusText.textContent = 'Stopped';
+            botPid.textContent = 'PID: -';
+            botUptime.textContent = 'Uptime: -';
+            botMemory.textContent = 'Memory: -';
+            botCpu.textContent = 'CPU: -';
+        } else {
+            botStatusIndicator.className = 'w-3 h-3 rounded-full bg-yellow-500';
+            botStatusText.textContent = status.status === 'error' ? 'Error' : status.status;
+            botPid.textContent = 'PID: -';
+            botUptime.textContent = 'Uptime: -';
+            botMemory.textContent = 'Memory: -';
+            botCpu.textContent = 'CPU: -';
+
+            // Show error message if available
+            if (status.error) {
+                addConsoleMessage(`Error: ${status.error}`, 'error');
+            }
+        }
+
+        // Update status history
+        updateStatusHistory(status.status);
+    }
+
+    // Update status history visualization
+    function updateStatusHistory(status) {
+        // Add new status to history
+        statusHistoryData.push(status);
+
+        // Limit history size
+        if (statusHistoryData.length > MAX_HISTORY_POINTS) {
+            statusHistoryData.shift();
+        }
+
+        // Clear current history visualization
+        statusHistory.innerHTML = '';
+
+        // Create new history visualization
+        statusHistoryData.forEach(status => {
+            const dot = document.createElement('div');
+            dot.className = 'h-full w-1';
+
+            if (status === 'running') {
+                dot.classList.add('bg-green-500');
+            } else if (status === 'stopped') {
+                dot.classList.add('bg-red-500');
+            } else {
+                dot.classList.add('bg-yellow-500');
+            }
+
+            statusHistory.appendChild(dot);
+        });
+    }
+
+    // Control bot
+    async function controlBot(action) {
+        try {
+            const response = await fetch(`/api/bot/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                updateBotStatus(result);
+
+                // Add message to console
+                addConsoleMessage(`Bot ${action} command sent.`, 'info');
+            } else {
+                const error = await response.json();
+                addConsoleMessage(`Error: ${error.detail}`, 'error');
+            }
+        } catch (error) {
+            console.error(`Error ${action} bot:`, error);
+            addConsoleMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    // Add message to console
+    function addConsoleMessage(message, type = '') {
+        const div = document.createElement('div');
+        div.textContent = message;
+        div.dataset.type = type || 'default';
+
+        // Apply styling based on message type
+        if (type === 'error') {
+            div.classList.add('text-red-400');
+        } else if (type === 'warning') {
+            div.classList.add('text-yellow-400');
+        } else if (type === 'info') {
+            div.classList.add('text-blue-400');
+        } else if (type === 'success') {
+            div.classList.add('text-green-400');
+        } else if (type === 'debug') {
+            div.classList.add('text-gray-500');
+        } else {
+            div.classList.add('text-gray-300');
+        }
+
+        // Add timestamp
+        const timestamp = new Date().toLocaleTimeString();
+        div.dataset.timestamp = timestamp;
+        div.innerHTML = `<span class="text-gray-500 mr-2">[${timestamp}]</span>` + div.textContent;
+
+        // Apply current filter
+        applyLogFilter(div);
+
+        // Append to console
+        consoleOutput.appendChild(div);
+
+        // Auto-scroll if enabled
+        if (autoScrollCheckbox.checked) {
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        // Update log count
+        updateLogCount();
+    }
+
+    // Apply log filter to a single log entry
+    function applyLogFilter(logElement) {
+        const currentFilter = logFilter.value;
+
+        if (currentFilter === 'all') {
+            logElement.style.display = '';
+        } else if (currentFilter === logElement.dataset.type) {
+            logElement.style.display = '';
+        } else {
+            logElement.style.display = 'none';
+        }
+    }
+
+    // Apply log filter to all log entries
+    function applyLogFilterToAll() {
+        const logs = consoleOutput.querySelectorAll('div');
+        logs.forEach(log => applyLogFilter(log));
+    }
+
+    // Update log count
+    function updateLogCount() {
+        const logs = consoleOutput.querySelectorAll('div');
+        logCount.textContent = logs.length;
+    }
+
+    // Download logs
+    function downloadLogs() {
+        const logs = consoleOutput.querySelectorAll('div');
+        let logText = '';
+
+        logs.forEach(log => {
+            logText += log.textContent + '\n';
+        });
+
+        const blob = new Blob([logText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bot-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Clear console
+    clearConsoleButton.addEventListener('click', function() {
+        consoleOutput.innerHTML = '';
+        addConsoleMessage('Console cleared.', 'info');
+        updateLogCount();
+    });
+
+    // Log filter change
+    logFilter.addEventListener('change', applyLogFilterToAll);
+
+    // Download logs
+    downloadLogsButton.addEventListener('click', downloadLogs);
+
+    // Bot control event listeners
+    startButton.addEventListener('click', function() {
+        controlBot('start');
+    });
+
+    restartButton.addEventListener('click', function() {
+        controlBot('restart');
+    });
+
+    stopButton.addEventListener('click', function() {
+        controlBot('stop');
+    });
+
+    // WebSocket for log streaming
+    let socket;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const RECONNECT_DELAY = 3000;
+
+    function connectWebSocket() {
+        // Close existing socket if any
+        if (socket) {
+            socket.close();
+        }
+
+        // Update connection status
+        updateConnectionStatus('connecting');
+
+        // Create new WebSocket connection
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        socket = new WebSocket(`${protocol}//${window.location.host}/api/bot/ws/logs`);
+
+        // WebSocket event handlers
+        socket.onopen = function() {
+            addConsoleMessage('Connected to bot logs.', 'success');
+            updateConnectionStatus('connected');
+            reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+
+            // Get bot settings
+            getBotSettings();
+        };
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            // Handle logs
+            if (data.logs) {
+                data.logs.forEach(log => {
+                    // Detect log type based on content
+                    let type = '';
+                    if (log.includes('ERROR') || log.includes('Exception') || log.includes('Error:')) {
+                        type = 'error';
+                    } else if (log.includes('WARNING') || log.includes('Warning:')) {
+                        type = 'warning';
+                    } else if (log.includes('INFO') || log.includes('Info:')) {
+                        type = 'info';
+                    } else if (log.includes('DEBUG') || log.includes('Debug:')) {
+                        type = 'debug';
+                    } else if (log.includes('SUCCESS') || log.includes('Success:')) {
+                        type = 'success';
+                    }
+
+                    addConsoleMessage(log, type);
+                });
+            }
+
+            // Handle status updates
+            if (data.status) {
+                updateBotStatus(data.status);
+            }
+
+            // Handle bot settings
+            if (data.settings) {
+                botScript.textContent = data.settings.bot_script || 'Not set';
+                botDirectory.textContent = data.settings.bot_dir || 'Not set';
+            }
+        };
+
+        socket.onclose = function(event) {
+            updateConnectionStatus('disconnected');
+
+            // Check if the close was clean
+            if (event.wasClean) {
+                addConsoleMessage(`Connection closed cleanly, code=${event.code}, reason=${event.reason}`, 'info');
+            } else {
+                addConsoleMessage('Connection died. Attempting to reconnect...', 'warning');
+
+                // Attempt to reconnect with exponential backoff
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    const delay = RECONNECT_DELAY * Math.pow(1.5, reconnectAttempts - 1);
+                    addConsoleMessage(`Reconnecting in ${delay/1000} seconds (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'info');
+                    setTimeout(connectWebSocket, delay);
+                } else {
+                    addConsoleMessage(`Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please refresh the page.`, 'error');
+                }
+            }
+        };
+
+        socket.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            updateConnectionStatus('error');
+            addConsoleMessage('WebSocket error occurred.', 'error');
+        };
+    }
+
+    // Update connection status indicator
+    function updateConnectionStatus(status) {
+        if (status === 'connected') {
+            connectionStatusIndicator.className = 'w-2 h-2 rounded-full bg-green-500';
+            connectionStatusText.textContent = 'Connected';
+        } else if (status === 'connecting') {
+            connectionStatusIndicator.className = 'w-2 h-2 rounded-full bg-yellow-500';
+            connectionStatusText.textContent = 'Connecting...';
+        } else if (status === 'disconnected') {
+            connectionStatusIndicator.className = 'w-2 h-2 rounded-full bg-red-500';
+            connectionStatusText.textContent = 'Disconnected';
+        } else if (status === 'error') {
+            connectionStatusIndicator.className = 'w-2 h-2 rounded-full bg-red-500';
+            connectionStatusText.textContent = 'Connection Error';
+        }
+    }
+
+    // Get bot settings
+    async function getBotSettings() {
+        try {
+            const response = await fetch('/api/bot/settings', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const settings = await response.json();
+                botScript.textContent = settings.bot_script || 'Not set';
+                botDirectory.textContent = settings.bot_dir || 'Not set';
+
+                // Send settings via WebSocket if connected
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'settings', settings }));
+                }
+            }
+        } catch (error) {
+            console.error('Error getting bot settings:', error);
+        }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get initial bot status
+        getBotStatus();
+
+        // Get initial bot settings
+        getBotSettings();
+
+        // Connect to WebSocket for log streaming
+        connectWebSocket();
+
+        // Refresh bot status periodically
+        setInterval(getBotStatus, 5000);
+
+        // Update log count
+        updateLogCount();
+
+        // Add initial console message
+        addConsoleMessage('Dashboard initialized. Connecting to bot...', 'info');
+    });
+</script>
+{% endblock %}

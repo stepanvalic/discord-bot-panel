@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Discord Bot Panel</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full bg-gray-800 rounded-lg shadow-lg p-8 border border-gray-700">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold">Discord Bot Panel</h1>
+            <p class="text-gray-400">Login to access the panel</p>
+        </div>
+
+        <div id="error-message" class="hidden bg-red-900 text-white p-3 rounded mb-4"></div>
+        <div id="info-message" class="hidden bg-blue-900 text-white p-3 rounded mb-4"></div>
+
+        <form id="login-form" class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-400 mb-1">Username</label>
+                <input type="text" id="username" name="username" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-400 mb-1">Password</label>
+                <input type="password" id="password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    Login
+                </button>
+            </div>
+        </form>
+
+        <div id="setup-section" class="hidden mt-8 pt-6 border-t border-gray-700">
+            <h2 class="text-lg font-semibold mb-4">First-time Setup</h2>
+            <p class="text-gray-400 mb-4">No users found. Create the first admin user:</p>
+
+            <form id="setup-form" class="space-y-4">
+                <div>
+                    <label for="setup-username" class="block text-sm font-medium text-gray-400 mb-1">Username</label>
+                    <input type="text" id="setup-username" name="username" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="setup-password" class="block text-sm font-medium text-gray-400 mb-1">Password</label>
+                    <input type="password" id="setup-password" name="password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="setup-confirm-password" class="block text-sm font-medium text-gray-400 mb-1">Confirm Password</label>
+                    <input type="password" id="setup-confirm-password" name="confirm-password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500">
+                        Create Admin User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Show error message
+        function showError(message) {
+            const errorElement = document.getElementById('error-message');
+            errorElement.textContent = message;
+            errorElement.classList.remove('hidden');
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                errorElement.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Show info message
+        function showInfo(message) {
+            const infoElement = document.getElementById('info-message');
+            infoElement.textContent = message;
+            infoElement.classList.remove('hidden');
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                infoElement.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Check if database is initialized
+        async function checkInitialized() {
+            try {
+                const response = await fetch('/auth/initialized');
+                const data = await response.json();
+
+                if (!data.initialized) {
+                    // Show setup section
+                    document.getElementById('setup-section').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error checking initialization:', error);
+            }
+        }
+
+        // Login form submission
+        document.getElementById('login-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showError('Please enter both username and password.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        'username': username,
+                        'password': password
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Save token to localStorage
+                    localStorage.setItem('token', data.access_token);
+
+                    // Redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    const error = await response.json();
+                    showError(error.detail || 'Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                console.error('Error during login:', error);
+                showError('An error occurred during login. Please try again.');
+            }
+        });
+
+        // Setup form submission
+        document.getElementById('setup-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('setup-username').value;
+            const password = document.getElementById('setup-password').value;
+            const confirmPassword = document.getElementById('setup-confirm-password').value;
+
+            if (!username || !password || !confirmPassword) {
+                showError('Please fill in all fields.');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                showError('Passwords do not match.');
+                return;
+            }
+
+            try {
+                showInfo('Creating admin user... Please wait.');
+
+                // Create admin user via API
+                const response = await fetch('/auth/setup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        role: 'admin'
+                    })
+                });
+
+                if (response.ok) {
+                    showInfo('Admin user created successfully. You can now log in.');
+
+                    // Clear setup form
+                    document.getElementById('setup-form').reset();
+
+                    // Hide setup section after a delay
+                    setTimeout(() => {
+                        document.getElementById('setup-section').classList.add('hidden');
+                    }, 3000);
+                } else {
+                    const error = await response.json();
+                    showError(error.detail || 'Failed to create admin user.');
+                }
+            } catch (error) {
+                console.error('Error during setup:', error);
+                showError('An error occurred during setup. Please try again.');
+            }
+        });
+
+        // Check if already logged in
+        async function checkIfLoggedIn() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // Check if database is initialized
+                checkInitialized();
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // User is logged in, redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    // Token is invalid, remove it
+                    localStorage.removeItem('token');
+                    // Check if database is initialized
+                    checkInitialized();
+                }
+            } catch (error) {
+                console.error('Error checking authentication:', error);
+                // Check if database is initialized
+                checkInitialized();
+            }
+        }
+
+        // Run the check
+        checkIfLoggedIn();
+    </script>
+</body>
+</html>
