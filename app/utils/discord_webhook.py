@@ -1,8 +1,7 @@
-import json
 import logging
 import requests
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any
 
 # Setup logging
 logging.basicConfig(
@@ -47,7 +46,7 @@ class DiscordWebhook:
         payload = {
             "embeds": embeds,
             "username": "Bot Control Panel",
-            "avatar_url": "https://i.imgur.com/4M34hi2.png"  # Default icon
+            "avatar_url": "https://raw.githubusercontent.com/stepanvalic/discord-bot-panel/77121cb0fa4a994c144eb5e8d8f93275145c4c9c/app/static/img/webhook-panel-image.png"  # Use the webhook panel image
         }
 
         try:
@@ -142,7 +141,7 @@ class DiscordWebhook:
             "title": "Bot Status",
             "color": status_color,
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     def _create_panel_embed(self, panel_status: Dict[str, Any]) -> Dict[str, Any]:
@@ -175,5 +174,5 @@ class DiscordWebhook:
             "title": "Panel Status",
             "color": 0x3498DB,  # Blue
             "fields": fields,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
