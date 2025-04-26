@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import bot, ssh, webhook, files, env, status, requirements, git, system, discord_settings, ip_bans
+from app.api.endpoints import bot, ssh, webhook, files, env, status, requirements, git, system, discord_settings, ip_bans, token_usage
 
 api_router = APIRouter()
 
@@ -16,3 +16,4 @@ api_router.include_router(git.router, prefix="/git", tags=["git"])
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(discord_settings.router, prefix="/discord", tags=["discord"])
 api_router.include_router(ip_bans.router, prefix="/ip-bans", tags=["ip-bans"])
+api_router.include_router(token_usage.router, prefix="/token-usage", tags=["token-usage"])

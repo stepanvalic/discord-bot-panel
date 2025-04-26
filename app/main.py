@@ -247,6 +247,19 @@ async def ip_bans_page(request: Request, user: User = Depends(get_current_user_f
     )
 
 
+@app.get("/token-usage")
+async def token_usage_page(request: Request, user: User = Depends(get_current_user_from_session)):
+    """
+    Token usage page - accessible to all users
+    """
+    if not user:
+        return RedirectResponse(url="/login")
+
+    return templates.TemplateResponse(
+        "token_usage.html", {"request": request, "user": user}
+    )
+
+
 @app.get("/users")
 async def users_page(request: Request, user: User = Depends(get_current_user_from_session)):
     """

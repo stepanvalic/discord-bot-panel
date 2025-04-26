@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Token Usage - Discord Bot Panel{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .token-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .token-table th, .token-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #374151;
+    }
+    .token-table th {
+        background-color: #1f2937;
+        font-weight: 600;
+    }
+    .token-table tbody tr:hover {
+        background-color: #1f2937;
+    }
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin-bottom: 2rem;
+    }
+    .stats-card {
+        background-color: #1f2937;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    }
+    .stats-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold">Token Usage</h1>
+        <button id="refresh-btn" class="py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md font-medium">
+            Refresh Data
+        </button>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="stats-card">
+            <div class="text-gray-400 mb-1">Total Tokens</div>
+            <div id="total-tokens" class="stats-value text-blue-400">-</div>
+        </div>
+        <div class="stats-card">
+            <div class="text-gray-400 mb-1">Total Cost (USD)</div>
+            <div id="total-cost" class="stats-value text-green-400">-</div>
+        </div>
+        <div class="stats-card">
+            <div class="text-gray-400 mb-1">Prompt Tokens</div>
+            <div id="prompt-tokens" class="stats-value text-yellow-400">-</div>
+        </div>
+        <div class="stats-card">
+            <div class="text-gray-400 mb-1">Completion Tokens</div>
+            <div id="completion-tokens" class="stats-value text-purple-400">-</div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Token Usage Over Time</h2>
+        <div class="chart-container">
+            <canvas id="token-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Token Usage Details</h2>
+        <div class="overflow-x-auto">
+            <table class="token-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Provider</th>
+                        <th>Model</th>
+                        <th>Operation</th>
+                        <th>Prompt Tokens</th>
+                        <th>Completion Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Cost (USD)</th>
+                    </tr>
+                </thead>
+                <tbody id="token-table-body">
+                    <tr>
+                        <td colspan="9" class="text-center py-4">Loading data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Global variables for chart
+    let tokenChart = null;
+
+    // Function to fetch token usage data
+    async function fetchTokenUsage() {
+        try {
+            const response = await fetch('/api/token-usage');
+            
+            if (response.status === 401) {
+                // Unauthorized, redirect to login
+                window.location.href = '/login';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error fetching token usage data:', error);
+            return { entries: [] };
+        }
+    }
+
+    // Function to update the summary stats
+    function updateSummaryStats(data) {
+        const entries = data.entries || [];
+        
+        // Calculate totals
+        const totals = entries.reduce((acc, entry) => {
+            acc.totalTokens += entry.total_tokens || 0;
+            acc.promptTokens += entry.prompt_tokens || 0;
+            acc.completionTokens += entry.completion_tokens || 0;
+            acc.costUsd += entry.cost_usd || 0;
+            return acc;
+        }, { totalTokens: 0, promptTokens: 0, completionTokens: 0, costUsd: 0 });
+        
+        // Update the UI
+        document.getElementById('total-tokens').textContent = totals.totalTokens.toLocaleString();
+        document.getElementById('prompt-tokens').textContent = totals.promptTokens.toLocaleString();
+        document.getElementById('completion-tokens').textContent = totals.completionTokens.toLocaleString();
+        document.getElementById('total-cost').textContent = '$' + totals.costUsd.toFixed(4);
+    }
+
+    // Function to update the table
+    function updateTable(data) {
+        const tableBody = document.getElementById('token-table-body');
+        const entries = data.entries || [];
+        
+        if (entries.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-4">No data available</td></tr>';
+            return;
+        }
+        
+        // Sort entries by timestamp (newest first)
+        entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Generate table rows
+        tableBody.innerHTML = entries.map(entry => `
+            <tr>
+                <td>${entry.date || '-'}</td>
+                <td>${entry.time || '-'}</td>
+                <td>${entry.provider || '-'}</td>
+                <td>${entry.model || '-'}</td>
+                <td>${entry.operation || '-'}</td>
+                <td>${entry.prompt_tokens?.toLocaleString() || '-'}</td>
+                <td>${entry.completion_tokens?.toLocaleString() || '-'}</td>
+                <td>${entry.total_tokens?.toLocaleString() || '-'}</td>
+                <td>$${entry.cost_usd?.toFixed(6) || '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // Function to update the chart
+    function updateChart(data) {
+        const entries = data.entries || [];
+        
+        if (entries.length === 0) {
+            return;
+        }
+        
+        // Sort entries by timestamp (oldest first for chart)
+        entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        // Prepare data for chart
+        const labels = entries.map(entry => entry.date);
+        const promptTokens = entries.map(entry => entry.prompt_tokens || 0);
+        const completionTokens = entries.map(entry => entry.completion_tokens || 0);
+        const totalTokens = entries.map(entry => entry.total_tokens || 0);
+        
+        // Create or update chart
+        const ctx = document.getElementById('token-chart').getContext('2d');
+        
+        if (tokenChart) {
+            // Update existing chart
+            tokenChart.data.labels = labels;
+            tokenChart.data.datasets[0].data = promptTokens;
+            tokenChart.data.datasets[1].data = completionTokens;
+            tokenChart.data.datasets[2].data = totalTokens;
+            tokenChart.update();
+        } else {
+            // Create new chart
+            tokenChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Prompt Tokens',
+                            data: promptTokens,
+                            borderColor: '#fbbf24', // yellow
+                            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                            tension: 0.1,
+                            fill: true
+                        },
+                        {
+                            label: 'Completion Tokens',
+                            data: completionTokens,
+                            borderColor: '#a78bfa', // purple
+                            backgroundColor: 'rgba(167, 139, 250, 0.1)',
+                            tension: 0.1,
+                            fill: true
+                        },
+                        {
+                            label: 'Total Tokens',
+                            data: totalTokens,
+                            borderColor: '#60a5fa', // blue
+                            backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                            tension: 0.1,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: '#e5e7eb' // text color
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(75, 85, 99, 0.2)'
+                            },
+                            ticks: {
+                                color: '#9ca3af'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(75, 85, 99, 0.2)'
+                            },
+                            ticks: {
+                                color: '#9ca3af'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Function to load and display all data
+    async function loadTokenUsageData() {
+        const data = await fetchTokenUsage();
+        updateSummaryStats(data);
+        updateTable(data);
+        updateChart(data);
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Load initial data
+        loadTokenUsageData();
+        
+        // Set up refresh button
+        document.getElementById('refresh-btn').addEventListener('click', loadTokenUsageData);
+    });
+</script>
+{% endblock %}

@@ -76,6 +76,11 @@
                             Requirements
                         </a>
                     </li>
+                    <li class="mb-2">
+                        <a href="/token-usage" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/token-usage' %}bg-gray-700{% endif %}">
+                            Token Usage
+                        </a>
+                    </li>
                     {% if user.role == 'admin' %}
                     <li class="mb-2">
                         <a href="/users" class="block p-2 rounded hover:bg-gray-700 {% if request.url.path == '/users' %}bg-gray-700{% endif %}">
